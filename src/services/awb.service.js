@@ -41,7 +41,8 @@ const scanAWB = async ({ awbId, channelPartnerId, brandId }, userId, meta) => {
 
 const User = require('../models/User');
 
-const cancelAWB = async (awbId, userId, meta, passcode) => {
+const cancelAWB = async (awbId, userId, meta) => {
+
   const record = await AWBRecord.findOne({ awbId });
   if (!record) {
     const err = new Error('AWB not found');
@@ -55,37 +56,11 @@ const cancelAWB = async (awbId, userId, meta, passcode) => {
     throw err;
   }
 
-  // Fetch the user and verify the passcode
-  const user = await User.findById(userId).select('+passcode');
+  // Fetch the user (no passcode check)
+  const user = await User.findById(userId);
   if (!user) {
     const err = new Error('User not found');
     err.statusCode = 403;
-    throw err;
-  }
-
-  // Defensive: Don't call bcrypt.compare with undefined
-  if (!passcode || typeof passcode !== "string") {
-    const err = new Error('Passcode must be provided');
-    err.statusCode = 400;
-    throw err;
-  }
-  if (!user.passcode) {
-    const err = new Error('User has no passcode set');
-    err.statusCode = 500;
-    throw err;
-  }
-
-  let isValidPasscode = false;
-  try {
-    isValidPasscode = await user.comparePasscode(passcode);
-  } catch (e) {
-    // Log the error if needed, but respond with invalid passcode
-    isValidPasscode = false;
-  }
-
-  if (!isValidPasscode) {
-    const err = new Error('Invalid passcode');
-    err.statusCode = 401;
     throw err;
   }
 
@@ -284,4 +259,28 @@ const getAWBsForExport = async (filters) => {
     .sort({ [sortBy]: sortDir });
 };
 
-module.exports = { scanAWB, cancelAWB, getAWBs, getAWBById, updateAWB, deleteAWB, getAWBsForExport };
+const verifyPasscode = async (userId, passcode) => {
+  console.log(`[verifyPasscode] Called with userId: ${userId}, passcode: ${passcode}`);
+  // Explicitly select passcode since it's select: false by default
+  const user = await User.findById(userId).select('+passcode');
+  if (!user) {
+    console.log(`[verifyPasscode] User not found for ID: ${userId}`);
+    const err = new Error('User not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Use the model method to compare hashed passcodes
+  const isMatch = await user.comparePasscode(passcode);
+  if (!isMatch) {
+    console.log(`[verifyPasscode] Invalid passcode for userId: ${userId}. Provided: ${passcode}`);
+    const err = new Error('Invalid passcode');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  console.log(`[verifyPasscode] Passcode verified for userId: ${userId}`);
+  return user;
+};
+
+module.exports = { scanAWB, cancelAWB, getAWBs, getAWBById, updateAWB, deleteAWB, getAWBsForExport,verifyPasscode };

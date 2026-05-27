@@ -70,7 +70,18 @@ const updateUser = async (id, data, actorId, meta) => {
     }
   }
 
-  Object.assign(user, data);
+  // Only update passcode if it's present in the data
+  if (Object.prototype.hasOwnProperty.call(data, 'passcode')) {
+    user.passcode = data.passcode;
+  }
+
+  // Update other fields (excluding passcode if present)
+  Object.keys(data).forEach(key => {
+    if (key !== 'passcode') {
+      user[key] = data[key];
+    }
+  });
+
   await user.save();
 
   await createAuditLog({
@@ -135,5 +146,15 @@ const updateUserStatus = async (id, isActive, actorId, meta) => {
 
   return user;
 };
+
+/**
+ * Verifies whether the given userId and passcode match a user.
+ * Returns the user object if matched, otherwise throws an error.
+ * @param {string} userId - The user ID to verify.
+ * @param {string} passcode - The passcode to verify.
+ * @returns {Promise<User>} - Resolves with user if valid, else throws Error.
+ */
+
+
 
 module.exports = { getUsers, createUser, updateUser, deleteUser, updateUserStatus };

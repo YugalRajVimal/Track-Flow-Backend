@@ -13,4 +13,6 @@ router.put('/:id', updateUserValidator, validate, ctrl.updateUser);
 router.delete('/:id', ctrl.deleteUser);
 router.patch('/:id/status', ctrl.updateUserStatus);
 
+
+
 module.exports = router;

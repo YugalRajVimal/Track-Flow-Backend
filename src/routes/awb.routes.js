@@ -16,5 +16,6 @@ router.get('/', ctrl.getAWBs);
 router.get('/:id', ctrl.getAWBById);
 router.put('/:id', updateAWBValidator, validate, ctrl.updateAWB);
 router.delete('/:id', authorize('admin'), ctrl.deleteAWB);
+router.post('/verify-passcode', ctrl.verifyPasscode);
 
 module.exports = router;

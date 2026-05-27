@@ -59,4 +59,15 @@ const deleteAWB = async (req, res, next) => {
   }
 };
 
-module.exports = { scanAWB, cancelAWB, getAWBs, getAWBById, updateAWB, deleteAWB };
+const verifyPasscode = async (req, res, next) => {
+  try {
+    const { passcode } = req.body;
+    const userId = req.user._id;
+    const user = await awbService.verifyPasscode(userId, passcode);
+    return sendSuccess(res, 200, 'Passcode verified successfully', user);
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { scanAWB, cancelAWB, getAWBs, getAWBById, updateAWB, deleteAWB , verifyPasscode};
