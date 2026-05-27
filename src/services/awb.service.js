@@ -39,7 +39,9 @@ const scanAWB = async ({ awbId, channelPartnerId, brandId }, userId, meta) => {
   return record;
 };
 
-const cancelAWB = async (awbId, userId, meta) => {
+const User = require('../models/User');
+
+const cancelAWB = async (awbId, userId, meta, passcode) => {
   const record = await AWBRecord.findOne({ awbId });
   if (!record) {
     const err = new Error('AWB not found');
@@ -50,6 +52,40 @@ const cancelAWB = async (awbId, userId, meta) => {
   if (record.status === 'cancelled') {
     const err = new Error('AWB is already cancelled');
     err.statusCode = 400;
+    throw err;
+  }
+
+  // Fetch the user and verify the passcode
+  const user = await User.findById(userId).select('+passcode');
+  if (!user) {
+    const err = new Error('User not found');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  // Defensive: Don't call bcrypt.compare with undefined
+  if (!passcode || typeof passcode !== "string") {
+    const err = new Error('Passcode must be provided');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!user.passcode) {
+    const err = new Error('User has no passcode set');
+    err.statusCode = 500;
+    throw err;
+  }
+
+  let isValidPasscode = false;
+  try {
+    isValidPasscode = await user.comparePasscode(passcode);
+  } catch (e) {
+    // Log the error if needed, but respond with invalid passcode
+    isValidPasscode = false;
+  }
+
+  if (!isValidPasscode) {
+    const err = new Error('Invalid passcode');
+    err.statusCode = 401;
     throw err;
   }
 

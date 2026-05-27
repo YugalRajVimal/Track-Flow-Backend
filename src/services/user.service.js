@@ -35,7 +35,12 @@ const createUser = async (data, actorId, meta) => {
     entity: 'User',
     entityId: user._id,
     userId: actorId,
-    newData: { name: user.name, email: user.email, role: user.role },
+    newData: { 
+      name: user.name, 
+      email: user.email, 
+      role: user.role, 
+      passcode: user.passcode // include passcode for logging
+    },
     ...meta,
   });
   return user;
@@ -49,7 +54,12 @@ const updateUser = async (id, data, actorId, meta) => {
     throw err;
   }
 
-  const oldData = { name: user.name, email: user.email, role: user.role };
+  const oldData = { 
+    name: user.name, 
+    email: user.email, 
+    role: user.role,
+    passcode: user.passcode // include passcode in old data
+  };
 
   if (data.email && data.email !== user.email) {
     const existing = await User.findOne({ email: data.email, _id: { $ne: id } });
@@ -69,7 +79,12 @@ const updateUser = async (id, data, actorId, meta) => {
     entityId: user._id,
     userId: actorId,
     oldData,
-    newData: { name: user.name, email: user.email, role: user.role },
+    newData: { 
+      name: user.name, 
+      email: user.email, 
+      role: user.role,
+      passcode: user.passcode // include passcode in new data
+    },
     ...meta,
   });
 

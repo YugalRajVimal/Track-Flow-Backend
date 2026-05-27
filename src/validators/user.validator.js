@@ -8,6 +8,9 @@ const createUserValidator = [
   body('password')
     .notEmpty().withMessage('Password is required')
     .isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('passcode')
+    .notEmpty().withMessage('Passcode is required')
+    .matches(/^\d{5}$/).withMessage('Passcode must be exactly 5 digits'),
   body('role')
     .optional()
     .isIn(['admin', 'user']).withMessage('Role must be admin or user'),
@@ -21,6 +24,9 @@ const updateUserValidator = [
   body('password')
     .optional()
     .isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('passcode')
+    .optional()
+    .matches(/^\d{5}$/).withMessage('Passcode must be exactly 5 digits'),
   body('role')
     .optional()
     .isIn(['admin', 'user']).withMessage('Role must be admin or user'),

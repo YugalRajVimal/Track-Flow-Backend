@@ -15,7 +15,7 @@ const scanAWB = async (req, res, next) => {
 
 const cancelAWB = async (req, res, next) => {
   try {
-    await awbService.cancelAWB(req.params.awbId, req.user._id, getMeta(req));
+    await awbService.cancelAWB(req.params.awbId, req.user._id, getMeta(req), req.body.passcode);
     return sendSuccess(res, 200, 'AWB marked as cancelled', {});
   } catch (error) {
     next(error);
@@ -25,6 +25,7 @@ const cancelAWB = async (req, res, next) => {
 const getAWBs = async (req, res, next) => {
   try {
     const { records, pagination } = await awbService.getAWBs(req.query);
+    
     return sendSuccess(res, 200, 'AWB records fetched successfully', records, pagination);
   } catch (error) {
     next(error);
