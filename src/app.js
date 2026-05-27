@@ -12,6 +12,7 @@ const userRoutes = require('./routes/user.routes');
 const channelPartnerRoutes = require('./routes/channelPartner.routes');
 const brandRoutes = require('./routes/brand.routes');
 const awbRoutes = require('./routes/awb.routes');
+const returnRoutes = require('./routes/return.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const auditLogRoutes = require('./routes/auditLog.routes');
 const exportRoutes = require('./routes/export.routes');
@@ -83,6 +84,8 @@ app.use(`${API_PREFIX}/users`, userRoutes);
 app.use(`${API_PREFIX}/channel-partners`, channelPartnerRoutes);
 app.use(`${API_PREFIX}/brands`, brandRoutes);
 app.use(`${API_PREFIX}/awb`, awbRoutes);
+app.use(`${API_PREFIX}/returns`, returnRoutes);
+
 app.use(`${API_PREFIX}/dashboard`, dashboardRoutes);
 app.use(`${API_PREFIX}/audit-logs`, auditLogRoutes);
 app.use(`${API_PREFIX}/export`, exportRoutes);
