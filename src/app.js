@@ -32,30 +32,30 @@ app.use(
 );
 
 // ─── Rate Limiting ──────────────────────────────────────────────────────────
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    message: 'Too many requests, please try again later.',
-    errors: [],
-  },
-});
+// const limiter = rateLimit({
+//   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+//   max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
+//   standardHeaders: true,
+//   legacyHeaders: false,
+//   message: {
+//     success: false,
+//     message: 'Too many requests, please try again later.',
+//     errors: [],
+//   },
+// });
 
-app.use(limiter);
+// app.use(limiter);
 
 // Stricter rate limit for auth endpoints
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  message: {
-    success: false,
-    message: 'Too many login attempts, please try again after 15 minutes.',
-    errors: [],
-  },
-});
+// const authLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000,
+//   max: 20,
+//   message: {
+//     success: false,
+//     message: 'Too many login attempts, please try again after 15 minutes.',
+//     errors: [],
+//   },
+// });
 
 // ─── Body Parsing ───────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
@@ -79,7 +79,7 @@ app.get('/health', (req, res) => {
 // ─── API Routes ─────────────────────────────────────────────────────────────
 const API_PREFIX = '/api/v1';
 
-app.use(`${API_PREFIX}/auth`, authLimiter, authRoutes);
+app.use(`${API_PREFIX}/auth`, authRoutes);
 app.use(`${API_PREFIX}/users`, userRoutes);
 app.use(`${API_PREFIX}/channel-partners`, channelPartnerRoutes);
 app.use(`${API_PREFIX}/brands`, brandRoutes);
