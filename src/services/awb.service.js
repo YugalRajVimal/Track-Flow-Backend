@@ -260,26 +260,36 @@ const getAWBsForExport = async (filters) => {
 };
 
 const verifyPasscode = async (userId, passcode) => {
-  console.log(`[verifyPasscode] Called with userId: ${userId}, passcode: ${passcode}`);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[verifyPasscode] Called with userId: ${userId}, passcode: ${passcode}`);
+  }
   // Explicitly select passcode since it's select: false by default
   const user = await User.findById(userId).select('+passcode');
   if (!user) {
-    console.log(`[verifyPasscode] User not found for ID: ${userId}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[verifyPasscode] User not found for ID: ${userId}`);
+    }
     const err = new Error('User not found');
     err.statusCode = 404;
     throw err;
   }
+  console.log(user);
 
   // Use the model method to compare hashed passcodes
+  // Use the comparePasscode method from the User schema (see User.js)
   const isMatch = await user.comparePasscode(passcode);
   if (!isMatch) {
-    console.log(`[verifyPasscode] Invalid passcode for userId: ${userId}. Provided: ${passcode}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[verifyPasscode] Invalid passcode for userId: ${userId}. Provided: ${passcode}`);
+    }
     const err = new Error('Invalid passcode');
     err.statusCode = 400;
     throw err;
   }
 
-  console.log(`[verifyPasscode] Passcode verified for userId: ${userId}`);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[verifyPasscode] Passcode verified for userId: ${userId}`);
+  }
   return user;
 };
 
