@@ -19,7 +19,12 @@ const returnRecordSchema = new mongoose.Schema(
     brand: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Brand',
-      required: [true, 'Brand is required'],
+      // required: [true, 'Brand is required'],
+    },
+    status: {
+      type: String,
+      enum: ['missing', '-'],
+      default: '-',
     },
     scannedAt: {
       type: Date,
@@ -28,12 +33,19 @@ const returnRecordSchema = new mongoose.Schema(
     cancelledAt: {
       type: Date,
     },
+    missingAt: {
+      type: Date,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
     },
     cancelledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    missingBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
