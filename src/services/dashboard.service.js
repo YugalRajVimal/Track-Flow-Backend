@@ -1,6 +1,9 @@
 const AWBRecord = require('../models/AWBRecord');
+const ReturnRecord = require('../models/ReturnRecord');
 const AuditLog = require('../models/AuditLog');
 const { getTodayRange } = require('../utils/response');
+
+
 
 const getDashboardStats = async () => {
   const { start: todayStart, end: todayEnd } = getTodayRange();
@@ -13,8 +16,9 @@ const getDashboardStats = async () => {
     channelPartnerAnalytics,
     scanActivityGraph,
     recentActivities,
+    totalReturnRecords, // Only count, as per new instruction
   ] = await Promise.all([
-    // Total scans today
+    // Total scans today (AWB)
     AWBRecord.countDocuments({
       createdAt: { $gte: todayStart, $lte: todayEnd },
     }),
@@ -47,8 +51,6 @@ const getDashboardStats = async () => {
           as: 'brand',
         },
       },
-      // Fix: use correct unwind option for broad MongoDB compatibility
-      // { $unwind: { path: '$brand', preserveNullAndEmpty: true } },
       { $unwind: { path: '$brand', preserveNullAndEmptyArrays: true } },
       {
         $project: {
@@ -86,8 +88,6 @@ const getDashboardStats = async () => {
           as: 'channelPartner',
         },
       },
-      // Fix: use correct unwind option for broad MongoDB compatibility
-      // { $unwind: { path: '$channelPartner', preserveNullAndEmpty: true } },
       { $unwind: { path: '$channelPartner', preserveNullAndEmptyArrays: true } },
       {
         $project: {
@@ -103,7 +103,7 @@ const getDashboardStats = async () => {
       { $limit: 10 },
     ]),
 
-    // Scan activity graph — last 7 days
+    // Scan activity graph — last 7 days (AWB)
     AWBRecord.aggregate([
       {
         $match: {
@@ -144,6 +144,9 @@ const getDashboardStats = async () => {
       .sort({ createdAt: -1 })
       .limit(10)
       .lean(),
+
+    // Only count (not full documents) for ReturnRecords
+    ReturnRecord.countDocuments({}),
   ]);
 
   return {
@@ -154,6 +157,7 @@ const getDashboardStats = async () => {
     channelPartnerAnalytics,
     scanActivityGraph,
     recentActivities,
+    totalReturnRecords, // Only count, as requested
   };
 };
 
