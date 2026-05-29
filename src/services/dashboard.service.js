@@ -3,10 +3,38 @@ const ReturnRecord = require('../models/ReturnRecord');
 const AuditLog = require('../models/AuditLog');
 const { getTodayRange } = require('../utils/response');
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper — build a { $gte, $lte } createdAt range from optional YYYY-MM-DD
+// strings. Falls back to today when no params supplied (preserves old behaviour).
+// ─────────────────────────────────────────────────────────────────────────────
+function buildDateRange(startDate, endDate) {
+  if (startDate && endDate) {
+    // Parse as local midnight → end-of-day so the full day is always included
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
 
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
 
-const getDashboardStats = async () => {
+    return { $gte: start, $lte: end };
+  }
+
+  // Default: today (original behaviour)
   const { start: todayStart, end: todayEnd } = getTodayRange();
+  return { $gte: todayStart, $lte: todayEnd };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getDashboardStats({ startDate?, endDate? })
+//
+// startDate / endDate — optional YYYY-MM-DD strings from req.query.
+// When omitted the function behaves exactly as before (today's range).
+// ─────────────────────────────────────────────────────────────────────────────
+const getDashboardStats = async ({ startDate, endDate } = {}) => {
+  const createdAt = buildDateRange(startDate, endDate);
+
+  // Single match object reused across every query
+  const dateMatch = { createdAt };
 
   const [
     totalScansToday,
@@ -16,21 +44,21 @@ const getDashboardStats = async () => {
     channelPartnerAnalytics,
     scanActivityGraph,
     recentActivities,
-    totalReturnRecords, // Only count, as per new instruction
+    totalReturnRecords,
   ] = await Promise.all([
-    // Total scans today (AWB)
-    AWBRecord.countDocuments({
-      createdAt: { $gte: todayStart, $lte: todayEnd },
-    }),
 
-    // Total dispatched (all time)
-    AWBRecord.countDocuments({ status: 'dispatched' }),
+    // ── Total scans in selected range ──────────────────────────────────────
+    AWBRecord.countDocuments(dateMatch),
 
-    // Total cancelled (all time)
-    AWBRecord.countDocuments({ status: 'cancelled' }),
+    // ── Total dispatched in selected range ─────────────────────────────────
+    AWBRecord.countDocuments({ ...dateMatch, status: 'dispatched' }),
 
-    // Brand analytics
+    // ── Total cancelled in selected range ──────────────────────────────────
+    AWBRecord.countDocuments({ ...dateMatch, status: 'cancelled' }),
+
+    // ── Brand analytics filtered by date range ─────────────────────────────
     AWBRecord.aggregate([
+      { $match: dateMatch },
       {
         $group: {
           _id: '$brand',
@@ -66,8 +94,9 @@ const getDashboardStats = async () => {
       { $limit: 10 },
     ]),
 
-    // Channel partner analytics
+    // ── Channel partner analytics filtered by date range ───────────────────
     AWBRecord.aggregate([
+      { $match: dateMatch },
       {
         $group: {
           _id: '$channelPartner',
@@ -103,15 +132,10 @@ const getDashboardStats = async () => {
       { $limit: 10 },
     ]),
 
-    // Scan activity graph — last 7 days (AWB)
+    // ── Scan activity graph — daily buckets within selected range ──────────
+    // Previously hardcoded to "last 7 days"; now reflects the chosen range.
     AWBRecord.aggregate([
-      {
-        $match: {
-          createdAt: {
-            $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-          },
-        },
-      },
+      { $match: dateMatch },
       {
         $group: {
           _id: {
@@ -138,26 +162,26 @@ const getDashboardStats = async () => {
       },
     ]),
 
-    // Recent activities from audit logs
-    AuditLog.find()
+    // ── Recent activities filtered by date range ───────────────────────────
+    AuditLog.find({ createdAt })
       .populate('user', 'name email role')
       .sort({ createdAt: -1 })
       .limit(10)
       .lean(),
 
-    // Only count (not full documents) for ReturnRecords
-    ReturnRecord.countDocuments({}),
+    // ── Return records count filtered by date range ────────────────────────
+    ReturnRecord.countDocuments(dateMatch),
   ]);
 
   return {
-    totalScansToday,
+    totalScansToday,      // key name kept for frontend compatibility
     totalDispatched,
     totalCancelled,
     brandAnalytics,
     channelPartnerAnalytics,
     scanActivityGraph,
     recentActivities,
-    totalReturnRecords, // Only count, as requested
+    totalReturnRecords,
   };
 };
 
