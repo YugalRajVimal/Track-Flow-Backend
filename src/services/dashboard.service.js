@@ -24,12 +24,7 @@ function buildDateRange(startDate, endDate) {
   return { $gte: todayStart, $lte: todayEnd };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// getDashboardStats({ startDate?, endDate? })
-//
-// startDate / endDate — optional YYYY-MM-DD strings from req.query.
-// When omitted the function behaves exactly as before (today's range).
-// ─────────────────────────────────────────────────────────────────────────────
+
 const getDashboardStats = async ({ startDate, endDate } = {}) => {
   const createdAt = buildDateRange(startDate, endDate);
 
@@ -45,6 +40,8 @@ const getDashboardStats = async ({ startDate, endDate } = {}) => {
     scanActivityGraph,
     recentActivities,
     totalReturnRecords,
+    awbMissingRecordsCount,
+    returnMissingRecordsCount,
   ] = await Promise.all([
 
     // ── Total scans in selected range ──────────────────────────────────────
@@ -171,6 +168,12 @@ const getDashboardStats = async ({ startDate, endDate } = {}) => {
 
     // ── Return records count filtered by date range ────────────────────────
     ReturnRecord.countDocuments(dateMatch),
+
+    // ── AWB Missing Records count filtered by date range/status ────────────
+    AWBRecord.countDocuments({ ...dateMatch, status: 'missing' }),
+
+    // ── ReturnRecord Missing Records count filtered by date range/status ───
+    ReturnRecord.countDocuments({ ...dateMatch, status: 'missing' }),
   ]);
 
   return {
@@ -182,6 +185,8 @@ const getDashboardStats = async ({ startDate, endDate } = {}) => {
     scanActivityGraph,
     recentActivities,
     totalReturnRecords,
+    awbMissingRecordsCount,
+    returnMissingRecordsCount,
   };
 };
 
