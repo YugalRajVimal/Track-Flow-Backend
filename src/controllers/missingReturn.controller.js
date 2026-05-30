@@ -1,7 +1,7 @@
 /**
  * missingAWB.controller.js
  *
- * POST /api/v1/awb/missing/preview  — upload file + dateRange → preview missing rows
+ * POST /api/v1/awb/missing/preview  — upload file + dateRange + brandId → preview missing rows
  * POST /api/v1/awb/missing/save     — confirm & bulk-save missing rows
  */
 
@@ -13,6 +13,7 @@ const { sendSuccess }  = require('../utils/response');
  * Expects multipart/form-data with:
  *   file             (CSV / XLS / XLSX)
  *   channelPartnerId (string)
+ *   brandId          (string)   // --- Brand is required now
  *   startDate        (YYYY-MM-DD)
  *   endDate          (YYYY-MM-DD)
  */
@@ -24,10 +25,15 @@ const previewMissing = async (req, res, next) => {
       throw err;
     }
 
-    const { channelPartnerId, startDate, endDate } = req.body;
+    const { channelPartnerId, brandId, startDate, endDate } = req.body;
 
     if (!channelPartnerId) {
       const err = new Error('channelPartnerId is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!brandId) {
+      const err = new Error('brandId is required.');
       err.statusCode = 400;
       throw err;
     }
@@ -45,6 +51,7 @@ const previewMissing = async (req, res, next) => {
       fileBuffer:       req.file.buffer,
       originalname:     req.file.originalname,
       channelPartnerId,
+      brandId, // pass in brandId - required
       startDate,
       endDate,
       userId:           req.user._id,
@@ -60,6 +67,7 @@ const previewMissing = async (req, res, next) => {
  * Phase 2 – Save
  * Expects JSON body: { rows: [...] }
  * rows is the `missing` array returned by the preview endpoint.
+ * Each row MUST include brand.
  */
 const saveMissing = async (req, res, next) => {
   try {
@@ -69,6 +77,15 @@ const saveMissing = async (req, res, next) => {
       const err = new Error('rows array is required and must not be empty.');
       err.statusCode = 400;
       throw err;
+    }
+
+    // Optionally: Validate that every row contains brand
+    for (const row of rows) {
+      if (!row.brand) {
+        const err = new Error('Each row must include a brand. Brand is required for all rows.');
+        err.statusCode = 400;
+        throw err;
+      }
     }
 
     const result = await missingService.saveMissing(rows, req.user._id);

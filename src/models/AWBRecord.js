@@ -92,7 +92,7 @@ const awbRecordSchema = new mongoose.Schema(
     brand: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Brand',
-      // NOTE: not required — missing AWBs may have no brand
+      required: [true, 'Brand is required'],
     },
     status: {
       type: String,

@@ -3,33 +3,44 @@ const ReturnRecord = require('../models/ReturnRecord');
 const AuditLog = require('../models/AuditLog');
 const { getTodayRange } = require('../utils/response');
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper — build a { $gte, $lte } createdAt range from optional YYYY-MM-DD
-// strings. Falls back to today when no params supplied (preserves old behaviour).
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Helper — build a { $gte, $lte } createdAt range from optional YYYY-MM-DD
+ * strings. Falls back to today when no params supplied.
+ */
 function buildDateRange(startDate, endDate) {
   if (startDate && endDate) {
-    // Parse as local midnight → end-of-day so the full day is always included
     const start = new Date(startDate);
     start.setHours(0, 0, 0, 0);
-
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
-
     return { $gte: start, $lte: end };
   }
-
-  // Default: today (original behaviour)
   const { start: todayStart, end: todayEnd } = getTodayRange();
   return { $gte: todayStart, $lte: todayEnd };
 }
 
-
-const getDashboardStats = async ({ startDate, endDate } = {}) => {
+/**
+ * Dashboard stats — supports optional filters for channelPartnerId and brandId
+ * @param {Object} params 
+ * @param {string} [params.startDate]
+ * @param {string} [params.endDate]
+ * @param {string} [params.channelPartnerId]
+ * @param {string} [params.brandId]
+ */
+const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId } = {}) => {
   const createdAt = buildDateRange(startDate, endDate);
 
-  // Single match object reused across every query
-  const dateMatch = { createdAt };
+  // Build match filters for AWBRecord/ReturnRecord based on channel/brand
+  const filters = { createdAt };
+  if (channelPartnerId) {
+    filters.channelPartner = channelPartnerId;
+  }
+  if (brandId) {
+    filters.brand = brandId;
+  }
+
+  // For aggregation (will do similar match object as above):
+  const aggMatch = { ...filters };
 
   const [
     totalScansToday,
@@ -44,18 +55,18 @@ const getDashboardStats = async ({ startDate, endDate } = {}) => {
     returnMissingRecordsCount,
   ] = await Promise.all([
 
-    // ── Total scans in selected range ──────────────────────────────────────
-    AWBRecord.countDocuments(dateMatch),
+    // Total scans in selected range (with channel/brand if supplied)
+    AWBRecord.countDocuments(filters),
 
-    // ── Total dispatched in selected range ─────────────────────────────────
-    AWBRecord.countDocuments({ ...dateMatch, status: 'dispatched' }),
+    // Total dispatched
+    AWBRecord.countDocuments({ ...filters, status: 'dispatched' }),
 
-    // ── Total cancelled in selected range ──────────────────────────────────
-    AWBRecord.countDocuments({ ...dateMatch, status: 'cancelled' }),
+    // Total cancelled
+    AWBRecord.countDocuments({ ...filters, status: 'cancelled' }),
 
-    // ── Brand analytics filtered by date range ─────────────────────────────
+    // Brand analytics (only filter channelPartner if provided)
     AWBRecord.aggregate([
-      { $match: dateMatch },
+      { $match: aggMatch },
       {
         $group: {
           _id: '$brand',
@@ -91,9 +102,9 @@ const getDashboardStats = async ({ startDate, endDate } = {}) => {
       { $limit: 10 },
     ]),
 
-    // ── Channel partner analytics filtered by date range ───────────────────
+    // Channel partner analytics (only filter brand if provided)
     AWBRecord.aggregate([
-      { $match: dateMatch },
+      { $match: aggMatch },
       {
         $group: {
           _id: '$channelPartner',
@@ -129,10 +140,9 @@ const getDashboardStats = async ({ startDate, endDate } = {}) => {
       { $limit: 10 },
     ]),
 
-    // ── Scan activity graph — daily buckets within selected range ──────────
-    // Previously hardcoded to "last 7 days"; now reflects the chosen range.
+    // Scan activity graph — daily buckets
     AWBRecord.aggregate([
-      { $match: dateMatch },
+      { $match: aggMatch },
       {
         $group: {
           _id: {
@@ -159,22 +169,25 @@ const getDashboardStats = async ({ startDate, endDate } = {}) => {
       },
     ]),
 
-    // ── Recent activities filtered by date range ───────────────────────────
+    // Recent activities (AuditLogs) are not filtered by channel/brand because
+    // an AuditLog may not have a direct reference. Only filter by createdAt.
     AuditLog.find({ createdAt })
       .populate('user', 'name email role')
       .sort({ createdAt: -1 })
       .limit(10)
       .lean(),
 
-    // ── Return records count filtered by date range ────────────────────────
-    ReturnRecord.countDocuments(dateMatch),
+    // Return records count (channel/brand filter)
+    ReturnRecord.countDocuments(filters),
 
-    // ── AWB Missing Records count filtered by date range/status ────────────
-    AWBRecord.countDocuments({ ...dateMatch, status: 'missing' }),
+    // AWB missing records count (with all filters)
+    AWBRecord.countDocuments({ ...filters, status: 'missing' }),
 
-    // ── ReturnRecord Missing Records count filtered by date range/status ───
-    ReturnRecord.countDocuments({ ...dateMatch, status: 'missing' }),
+    // Return missing records count (with all filters)
+    ReturnRecord.countDocuments({ ...filters, status: 'missing' }),
   ]);
+
+
 
   return {
     totalScansToday,      // key name kept for frontend compatibility

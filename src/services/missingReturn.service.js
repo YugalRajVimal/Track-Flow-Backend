@@ -1,11 +1,12 @@
 
-
 /**
  * missingAWB.service.js
  *
  * Two-phase flow:
  *   1. previewMissing  - parse file, cross-check DB, return missing rows (no writes)
  *   2. saveMissing     - bulk-insert confirmed missing rows into ReturnRecord
+ *
+ * Brand is now required for all ReturnRecord docs.
  */
 
 const Papa = require('papaparse');
@@ -138,13 +139,15 @@ function parseFile(buffer, originalname) {
 /**
  * Each extractor receives a cleaned row and returns { awbId, missingAt }
  * or null if the row should be skipped.
+ *
+ * We ensure the awbId is always uppercase here.
  */
 function extractFlipkart(row) {
   const awbId = String(row['Tracking ID'] || '').trim();
   if (!awbId) return null;
 
   const missingAt = parseDMY(row['Order Date']);
-  return { awbId, missingAt };
+  return { awbId: awbId.toUpperCase(), missingAt };
 }
 
 function extractMeesho(row) {
@@ -156,7 +159,7 @@ function extractMeesho(row) {
   if (!awbId) return null;
 
   const missingAt = parseDMY(row['Order Date']);
-  return { awbId, missingAt };
+  return { awbId: awbId.toUpperCase(), missingAt };
 }
 
 function extractMyntra(row) {
@@ -168,7 +171,7 @@ function extractMyntra(row) {
   // Myntra date format: "DD-MM-YYYY HH:mm:ss"
   // parseDMY handles this correctly.
   const missingAt = parseDMY(row['Shipping Date']);
-  return { awbId, missingAt };
+  return { awbId: awbId.toUpperCase(), missingAt };
 }
 
 function extractWebsite(row) {
@@ -176,7 +179,7 @@ function extractWebsite(row) {
   if (!awbId) return null;
 
   const missingAt = parseDMY(row['Dispatch by date']);
-  return { awbId, missingAt };
+  return { awbId: awbId.toUpperCase(), missingAt };
 }
 
 const EXTRACTORS = {
@@ -194,6 +197,7 @@ const EXTRACTORS = {
  * @param {Buffer}   fileBuffer
  * @param {string}   originalname
  * @param {string}   channelPartnerId   - MongoDB ObjectId string
+ * @param {string}   brandId            - MongoDB ObjectId string (required)
  * @param {string}   startDate          - ISO / YYYY-MM-DD
  * @param {string}   endDate            - ISO / YYYY-MM-DD
  * @param {ObjectId} userId             - the logged-in user's _id
@@ -204,6 +208,7 @@ const previewMissing = async ({
   fileBuffer,
   originalname,
   channelPartnerId,
+  brandId,           // <--- required
   startDate,
   endDate,
   userId,
@@ -229,9 +234,15 @@ const previewMissing = async ({
     throw err;
   }
 
+  if (!brandId) {
+    const err = new Error('Brand is required.');
+    err.statusCode = 422;
+    throw err;
+  }
+
   const extract = EXTRACTORS[partner];
 
-  // 3. Extract AWB IDs from file
+  // 3. Extract AWB IDs from file, ensuring awbId is uppercase already due to updated extractors
   const fileItems = []; // { awbId, missingAt }
   for (const row of rows) {
     const item = extract(row);
@@ -253,12 +264,13 @@ const previewMissing = async ({
 
   const dbQuery = {
     channelPartner: channelPartnerId,
+    brand: brandId,
     scannedAt: { $gte: start, $lte: end },
     awbId: { $in: fileAwbIds },
   };
 
   const existingRecords = await ReturnRecord.find(dbQuery).select('awbId').lean();
-  const existingSet = new Set(existingRecords.map((r) => r.awbId));
+  const existingSet = new Set(existingRecords.map((r) => String(r.awbId).toUpperCase()));
 
   // 5. Find missing (present in file, absent in DB)
   const missing = fileItems.filter((item) => !existingSet.has(item.awbId));
@@ -267,11 +279,12 @@ const previewMissing = async ({
     return { partner, totalInFile: fileItems.length, missing: [] };
   }
 
-  // 6. Shape response rows
+  // 6. Shape response rows. Ensure .awbId is uppercase.
+  // REQUIRED: Both channelPartner and brand MUST be set
   const missingRows = missing.map((item) => ({
-    awbId:          item.awbId,
+    awbId:          item.awbId.toUpperCase(),
     channelPartner: channelPartnerId, // raw ID - frontend displays the name
-    brand:          null,
+    brand:          brandId,
     status:         'missing',
     missingAt:      item.missingAt,
     missingBy:      userId,
@@ -304,16 +317,25 @@ const saveMissing = async (rows, userId) => {
     throw err;
   }
 
-  const docs = rows.map((row) => ({
-    awbId:          row.awbId,
-    channelPartner: row.channelPartner,
-    brand:          row.brand || undefined, // omit null - field is optional
-    status:         'missing',
-    scannedAt:      row.missingAt || new Date(),
-    missingAt:      row.missingAt || new Date(),
-    missingBy:      userId,
-    createdBy:      userId,
-  }));
+  // Brand is now REQUIRED for every record
+  const docs = rows.map((row) => {
+    if (!row.brand) {
+      throw Object.assign(
+        new Error('Brand is required for each row.'),
+        { statusCode: 400 }
+      );
+    }
+    return {
+      awbId:          String(row.awbId).toUpperCase(),
+      channelPartner: row.channelPartner,
+      brand:          row.brand, // must exist
+      status:         'missing',
+      scannedAt:      row.missingAt || new Date(),
+      missingAt:      row.missingAt || new Date(),
+      missingBy:      userId,
+      createdBy:      userId,
+    };
+  });
 
   let saved   = 0;
   let skipped = 0;

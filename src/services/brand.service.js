@@ -23,7 +23,18 @@ const getBrands = async ({ page = 1, limit = 10, search = '' }) => {
     Brand.countDocuments(query),
   ]);
 
-  return { brands, pagination: buildPagination(page, limit, total) };
+  // Add Channel Partner name after Brand Name like BrandName (ChannelPartnerName)
+  const formattedBrands = brands.map(brand => {
+    const brandObj = brand.toObject();
+    if (brandObj.channelPartner && brandObj.channelPartner.name) {
+      brandObj.displayName = `${brandObj.name} (${brandObj.channelPartner.name})`;
+    } else {
+      brandObj.displayName = brandObj.name;
+    }
+    return brandObj;
+  });
+
+  return { brands: formattedBrands, pagination: buildPagination(page, limit, total) };
 };
 
 const getBrandsByChannelPartner = async (channelPartnerId) => {

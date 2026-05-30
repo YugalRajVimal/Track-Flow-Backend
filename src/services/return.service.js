@@ -9,15 +9,16 @@ const POPULATE_OPTS = [
 ];
 
 const scanAWB = async ({ awbId, channelPartnerId, brandId }, userId, meta) => {
-  const existing = await ReturnRecord.findOne({ awbId });
+  const awbIdUpper = awbId ? awbId.toUpperCase() : awbId;
+  const existing = await ReturnRecord.findOne({ awbId: awbIdUpper });
   if (existing) {
-    const err = new Error(`AWB ${awbId} already exists`);
+    const err = new Error(`AWB ${awbIdUpper} already exists`);
     err.statusCode = 409;
     throw err;
   }
 
   const record = await ReturnRecord.create({
-    awbId,
+    awbId: awbIdUpper,
     channelPartner: channelPartnerId,
     brand: brandId,
     status: 'dispatched',
@@ -40,8 +41,6 @@ const scanAWB = async ({ awbId, channelPartnerId, brandId }, userId, meta) => {
 };
 
 const User = require('../models/User');
-
-
 
 const getAWBs = async (filters) => {
   const {
@@ -126,17 +125,22 @@ const updateAWB = async (id, data, userId, meta) => {
   }
 
   // If updating awbId, check uniqueness
+  let newAwbIdUpper = undefined;
   if (data.awbId && data.awbId !== record.awbId) {
-    const existing = await ReturnRecord.findOne({ awbId: data.awbId, _id: { $ne: id } });
+    newAwbIdUpper = data.awbId.toUpperCase();
+    const existing = await ReturnRecord.findOne({ awbId: newAwbIdUpper, _id: { $ne: id } });
     if (existing) {
-      const err = new Error(`AWB ID ${data.awbId} already exists`);
+      const err = new Error(`AWB ID ${newAwbIdUpper} already exists`);
       err.statusCode = 409;
       throw err;
     }
   }
 
   const oldData = record.toObject();
-  Object.assign(record, data);
+  Object.assign(record, {
+    ...data,
+    ...(data.awbId ? { awbId: (data.awbId || '').toUpperCase() } : {}),
+  });
   await record.save();
   await record.populate(POPULATE_OPTS);
 
@@ -218,7 +222,5 @@ const getAWBsForExport = async (filters) => {
     ])
     .sort({ [sortBy]: sortDir });
 };
-
-
 
 module.exports = { scanAWB, getAWBs, getAWBById, updateAWB, deleteAWB, getAWBsForExport };

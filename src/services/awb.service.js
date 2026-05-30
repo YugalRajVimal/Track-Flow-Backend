@@ -9,15 +9,16 @@ const POPULATE_OPTS = [
 ];
 
 const scanAWB = async ({ awbId, channelPartnerId, brandId }, userId, meta) => {
-  const existing = await AWBRecord.findOne({ awbId });
+  const awbIdUpper = awbId ? awbId.toUpperCase() : awbId;
+  const existing = await AWBRecord.findOne({ awbId: awbIdUpper });
   if (existing) {
-    const err = new Error(`AWB ${awbId} already exists`);
+    const err = new Error(`AWB ${awbIdUpper} already exists`);
     err.statusCode = 409;
     throw err;
   }
 
   const record = await AWBRecord.create({
-    awbId,
+    awbId: awbIdUpper,
     channelPartner: channelPartnerId,
     brand: brandId,
     status: 'dispatched',
@@ -42,8 +43,8 @@ const scanAWB = async ({ awbId, channelPartnerId, brandId }, userId, meta) => {
 const User = require('../models/User');
 
 const cancelAWB = async (awbId, userId, meta) => {
-
-  const record = await AWBRecord.findOne({ awbId });
+  const awbIdUpper = awbId ? awbId.toUpperCase() : awbId;
+  const record = await AWBRecord.findOne({ awbId: awbIdUpper });
   if (!record) {
     const err = new Error('AWB not found');
     err.statusCode = 404;
@@ -117,7 +118,8 @@ const getAWBs = async (filters) => {
   }
 
   if (search) {
-    query.awbId = { $regex: search, $options: 'i' };
+    // Match uppercase for search as well (case-insensitive)
+    query.awbId = { $regex: search.toUpperCase(), $options: 'i' };
   }
 
   if (status) {
@@ -166,16 +168,22 @@ const updateAWB = async (id, data, userId, meta) => {
   }
 
   // If updating awbId, check uniqueness
+  let newAwbIdUpper;
   if (data.awbId && data.awbId !== record.awbId) {
-    const existing = await AWBRecord.findOne({ awbId: data.awbId, _id: { $ne: id } });
+    newAwbIdUpper = data.awbId.toUpperCase();
+    const existing = await AWBRecord.findOne({ awbId: newAwbIdUpper, _id: { $ne: id } });
     if (existing) {
-      const err = new Error(`AWB ID ${data.awbId} already exists`);
+      const err = new Error(`AWB ID ${newAwbIdUpper} already exists`);
       err.statusCode = 409;
       throw err;
     }
   }
 
   const oldData = record.toObject();
+  // Ensure awbId is saved in uppercase on update as well
+  if (data.awbId) {
+    data.awbId = data.awbId.toUpperCase();
+  }
   Object.assign(record, data);
   await record.save();
   await record.populate(POPULATE_OPTS);
@@ -243,7 +251,7 @@ const getAWBsForExport = async (filters) => {
     query.createdAt = { $gte: start, $lte: end };
   }
 
-  if (search) query.awbId = { $regex: search, $options: 'i' };
+  if (search) query.awbId = { $regex: search.toUpperCase(), $options: 'i' };
   if (status) query.status = status;
   if (channelPartnerId) query.channelPartner = channelPartnerId;
   if (brandId) query.brand = brandId;
@@ -277,6 +285,16 @@ const verifyPasscode = async (userId, passcode) => {
 
   // Use the model method to compare hashed passcodes
   // Use the comparePasscode method from the User schema (see User.js)
+  if (typeof passcode !== 'string' || !passcode) {
+    const err = new Error('Passcode is required and must be a non-empty string');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (typeof user.passcode !== 'string' || user.passcode.length === 0) {
+    const err = new Error('Passcode not set for this user');
+    err.statusCode = 500;
+    throw err;
+  }
   const isMatch = await user.comparePasscode(passcode);
   if (!isMatch) {
     if (process.env.NODE_ENV !== 'production') {
