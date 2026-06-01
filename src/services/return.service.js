@@ -21,7 +21,7 @@ const scanAWB = async ({ awbId, channelPartnerId, brandId }, userId, meta) => {
     awbId: awbIdUpper,
     channelPartner: channelPartnerId,
     brand: brandId,
-    status: 'dispatched',
+    status: '-',
     scannedAt: new Date(),
     createdBy: userId,
   });
