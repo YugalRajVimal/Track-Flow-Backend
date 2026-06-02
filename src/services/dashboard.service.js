@@ -42,6 +42,9 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
   // For aggregation (will do similar match object as above):
   const aggMatch = { ...filters };
 
+  // For "total scans", exclude AWBRecords that have status: 'missing'
+  const scansFilters = { ...filters, status: { $ne: 'missing' } };
+
   const [
     totalScansToday,
     totalDispatched,
@@ -56,7 +59,8 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
   ] = await Promise.all([
 
     // Total scans in selected range (with channel/brand if supplied)
-    AWBRecord.countDocuments(filters),
+    // -- exclude 'missing'
+    AWBRecord.countDocuments(scansFilters),
 
     // Total dispatched
     AWBRecord.countDocuments({ ...filters, status: 'dispatched' }),
@@ -70,7 +74,16 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
       {
         $group: {
           _id: '$brand',
-          totalScans: { $sum: 1 },
+          // Exclude 'missing' from totalScans
+          totalScans: {
+            $sum: {
+              $cond: [
+                { $ne: ['$status', 'missing'] },
+                1,
+                0,
+              ],
+            },
+          },
           dispatched: {
             $sum: { $cond: [{ $eq: ['$status', 'dispatched'] }, 1, 0] },
           },
@@ -108,7 +121,16 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
       {
         $group: {
           _id: '$channelPartner',
-          totalScans: { $sum: 1 },
+          // Exclude 'missing' from totalScans
+          totalScans: {
+            $sum: {
+              $cond: [
+                { $ne: ['$status', 'missing'] },
+                1,
+                0,
+              ],
+            },
+          },
           dispatched: {
             $sum: { $cond: [{ $eq: ['$status', 'dispatched'] }, 1, 0] },
           },
@@ -148,7 +170,16 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
           _id: {
             $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
           },
-          count: { $sum: 1 },
+          // Exclude 'missing' from count
+          count: {
+            $sum: {
+              $cond: [
+                { $ne: ['$status', 'missing'] },
+                1,
+                0,
+              ],
+            },
+          },
           dispatched: {
             $sum: { $cond: [{ $eq: ['$status', 'dispatched'] }, 1, 0] },
           },
@@ -186,8 +217,6 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
     // Return missing records count (with all filters)
     ReturnRecord.countDocuments({ ...filters, status: 'missing' }),
   ]);
-
-
 
   return {
     totalScansToday,      // key name kept for frontend compatibility
