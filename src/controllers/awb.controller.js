@@ -24,9 +24,32 @@ const cancelAWB = async (req, res, next) => {
 
 const getAWBs = async (req, res, next) => {
   try {
-    const { records, pagination } = await awbService.getAWBs(req.query);
-    
-    return sendSuccess(res, 200, 'AWB records fetched successfully', records, pagination);
+    // Extract possible missing date range from query
+    const { missingFromDate, missingToDate, ...restQuery } = req.query;
+
+    // Call service with full query, including possible missingFromDate/missingToDate
+    const { records, pagination } = await awbService.getAWBs({
+      ...restQuery,
+      ...(missingFromDate && { missingFromDate }),
+      ...(missingToDate && { missingToDate }),
+    });
+
+    // Enrich each record with missingFromDate and missingToDate from db if present
+    const recordsWithMissingDates = records.map(rec => {
+      // These will be undefined if not present in DB
+      const { missingFromDate, missingToDate } = rec;
+      return {
+        ...rec._doc ? rec._doc : rec,
+        ...(missingFromDate && { missingFromDate }),
+        ...(missingToDate && { missingToDate }),
+      };
+    });
+
+    // Attach missingFromDate/missingToDate back to pagination for reference if they were queried
+    if (missingFromDate) pagination.missingFromDate = missingFromDate;
+    if (missingToDate) pagination.missingToDate = missingToDate;
+
+    return sendSuccess(res, 200, 'AWB records fetched successfully', recordsWithMissingDates, pagination);
   } catch (error) {
     next(error);
   }

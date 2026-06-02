@@ -30,20 +30,49 @@ function buildDateRange(startDate, endDate) {
 const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId } = {}) => {
   const createdAt = buildDateRange(startDate, endDate);
 
-  // Build match filters for AWBRecord/ReturnRecord based on channel/brand
+  // General filters (for status !== missing) use createdAt, channelPartnerId, brandId
   const filters = { createdAt };
-  if (channelPartnerId) {
-    filters.channelPartner = channelPartnerId;
-  }
-  if (brandId) {
-    filters.brand = brandId;
-  }
+  if (channelPartnerId) filters.channelPartner = channelPartnerId;
+  if (brandId) filters.brand = brandId;
 
-  // For aggregation (will do similar match object as above):
+  // For aggregation (same as above)
   const aggMatch = { ...filters };
 
   // For "total scans", exclude AWBRecords that have status: 'missing'
   const scansFilters = { ...filters, status: { $ne: 'missing' } };
+
+  // Filters for missing status: instead of createdAt, use missingFromDate/missingToDate for date
+  const buildMissingRange = (startDate, endDate) => {
+    // Both dates required, otherwise skip filtering
+    if (startDate && endDate) {
+      const start = new Date(startDate); start.setHours(0,0,0,0);
+      const end = new Date(endDate); end.setHours(23,59,59,999);
+      return { $gte: start, $lte: end };
+    }
+    const { start: todayStart, end: todayEnd } = getTodayRange();
+    return { $gte: todayStart, $lte: todayEnd };
+  };
+  const missingDateRange = buildMissingRange(startDate, endDate);
+
+  // Build filters for missing AWBs and Returns: date filter applies to missingFromDate/missingToDate
+  const awbMissingFilters = {};
+  if (channelPartnerId) awbMissingFilters.channelPartner = channelPartnerId;
+  if (brandId) awbMissingFilters.brand = brandId;
+  awbMissingFilters.status = 'missing';
+  // filter: (missingFromDate <= endDate) and (missingToDate >= startDate)
+  if (missingDateRange) {
+    awbMissingFilters.missingFromDate = { $lte: missingDateRange.$lte };
+    awbMissingFilters.missingToDate = { $gte: missingDateRange.$gte };
+  }
+
+  const returnMissingFilters = {};
+  if (channelPartnerId) returnMissingFilters.channelPartner = channelPartnerId;
+  if (brandId) returnMissingFilters.brand = brandId;
+  returnMissingFilters.status = 'missing';
+  if (missingDateRange) {
+    returnMissingFilters.missingFromDate = { $lte: missingDateRange.$lte };
+    returnMissingFilters.missingToDate = { $gte: missingDateRange.$gte };
+  }
 
   const [
     totalScansToday,
@@ -58,23 +87,22 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
     returnMissingRecordsCount,
   ] = await Promise.all([
 
-    // Total scans in selected range (with channel/brand if supplied)
-    // -- exclude 'missing'
+    // Total scans in selected range (with channel/brand if supplied) -
+    // excludes 'missing' status
     AWBRecord.countDocuments(scansFilters),
 
-    // Total dispatched
+    // Total dispatched (createdAt-based)
     AWBRecord.countDocuments({ ...filters, status: 'dispatched' }),
 
-    // Total cancelled
+    // Total cancelled (createdAt-based)
     AWBRecord.countDocuments({ ...filters, status: 'cancelled' }),
 
-    // Brand analytics (only filter channelPartner if provided)
+    // Brand analytics (createdAt-based)
     AWBRecord.aggregate([
       { $match: aggMatch },
       {
         $group: {
           _id: '$brand',
-          // Exclude 'missing' from totalScans
           totalScans: {
             $sum: {
               $cond: [
@@ -115,13 +143,12 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
       { $limit: 10 },
     ]),
 
-    // Channel partner analytics (only filter brand if provided)
+    // Channel partner analytics (createdAt-based)
     AWBRecord.aggregate([
       { $match: aggMatch },
       {
         $group: {
           _id: '$channelPartner',
-          // Exclude 'missing' from totalScans
           totalScans: {
             $sum: {
               $cond: [
@@ -162,7 +189,7 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
       { $limit: 10 },
     ]),
 
-    // Scan activity graph — daily buckets
+    // Scan activity graph — daily buckets (createdAt-based)
     AWBRecord.aggregate([
       { $match: aggMatch },
       {
@@ -170,7 +197,6 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
           _id: {
             $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
           },
-          // Exclude 'missing' from count
           count: {
             $sum: {
               $cond: [
@@ -200,22 +226,21 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
       },
     ]),
 
-    // Recent activities (AuditLogs) are not filtered by channel/brand because
-    // an AuditLog may not have a direct reference. Only filter by createdAt.
+    // Recent activities (AuditLogs) — filter only by createdAt
     AuditLog.find({ createdAt })
       .populate('user', 'name email role')
       .sort({ createdAt: -1 })
       .limit(10)
       .lean(),
 
-    // Return records count (channel/brand filter)
+    // Return records count (createdAt, not missing) 
     ReturnRecord.countDocuments(filters),
 
-    // AWB missing records count (with all filters)
-    AWBRecord.countDocuments({ ...filters, status: 'missing' }),
+    // AWB missing records count (date on missingFrom/ToRange)
+    AWBRecord.countDocuments(awbMissingFilters),
 
-    // Return missing records count (with all filters)
-    ReturnRecord.countDocuments({ ...filters, status: 'missing' }),
+    // Return missing records count (date on missingFrom/ToRange)
+    ReturnRecord.countDocuments(returnMissingFilters),
   ]);
 
   return {

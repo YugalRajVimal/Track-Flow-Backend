@@ -42,6 +42,7 @@ const scanAWB = async ({ awbId, channelPartnerId, brandId }, userId, meta) => {
 
 
 
+
 const getAWBs = async (filters) => {
   const {
     page = 1,
