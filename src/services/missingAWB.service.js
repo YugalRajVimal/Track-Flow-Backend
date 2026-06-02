@@ -313,7 +313,17 @@ const previewMissing = async ({
  * @param {ObjectId} userId  - the logged-in user
  * @returns {{ saved: number, skipped: number }}
  */
-const saveMissing = async (rows, userId) => {
+/**
+ * Save confirmed missing AWBs (bulk-insert).
+ * Accepts explicit missingFromDate and missingToDate (must be provided and validated in controller).
+ *
+ * @param {Array}    rows             - Array of missing AWB objects (from preview, each must include brand).
+ * @param {ObjectId} userId           - The logged-in user's ID.
+ * @param {string|Date} missingFrom   - Start date for missing range (YYYY-MM-DD or Date).
+ * @param {string|Date} missingTo     - End date for missing range (YYYY-MM-DD or Date).
+ * @returns {{ saved: number, skipped: number }}
+ */
+const saveMissing = async (rows, userId, missingFrom, missingTo) => {
   if (!Array.isArray(rows) || rows.length === 0) {
     const err = new Error('No rows to save.');
     err.statusCode = 400;
@@ -327,13 +337,28 @@ const saveMissing = async (rows, userId) => {
     throw err;
   }
 
+  // Validate missingFrom and missingTo
+  if (!missingFrom || !missingTo) {
+    const err = new Error('missingFrom and missingTo dates are required.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Parse and normalize missingFromDate and missingToDate to full Date range
+  const fromDate = new Date(missingFrom);
+  fromDate.setHours(0,0,0,0);
+  const toDate = new Date(missingTo);
+  toDate.setHours(23,59,59,999);
+
   const docs = rows.map((row) => ({
     awbId:          (row.awbId || '').toUpperCase(),
     channelPartner: row.channelPartner,
     brand:          row.brand,
     status:         'missing',
-    scannedAt:      row.missingAt || new Date(),
-    missingAt:      row.missingAt || new Date(),
+    scannedAt:      row.missingAt || new Date(),   // For historical, retains preview's missingAt
+    missingAt:      row.missingAt || new Date(),   // Should be the preview's missingAt per row
+    missingFromDate: fromDate,                     // New: explicit missing range start
+    missingToDate:   toDate,                       // New: explicit missing range end
     missingBy:      userId,
     createdBy:      userId,
   }));

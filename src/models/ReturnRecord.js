@@ -36,6 +36,14 @@ const returnRecordSchema = new mongoose.Schema(
     missingAt: {
       type: Date,
     },
+    missingFromDate: {
+      type: Date,
+      // For clarity, these are only relevant when status === 'missing'
+    },
+    missingToDate: {
+      type: Date,
+      // For clarity, these are only relevant when status === 'missing'
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -53,7 +61,7 @@ const returnRecordSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Index for efficient date-based queries
+// Indexes for efficient queries
 returnRecordSchema.index({ createdAt: -1 });
 returnRecordSchema.index({ channelPartner: 1, brand: 1 });
 returnRecordSchema.index({ status: 1 });

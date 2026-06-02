@@ -73,7 +73,7 @@ const previewMissing = async (req, res, next) => {
  */
 const saveMissing = async (req, res, next) => {
   try {
-    const { rows } = req.body;
+    const { rows, missingFromDate, missingToDate } = req.body;
 
     if (!Array.isArray(rows) || rows.length === 0) {
       const err = new Error('rows array is required and must not be empty.');
@@ -88,7 +88,21 @@ const saveMissing = async (req, res, next) => {
       throw err;
     }
 
-    const result = await missingService.saveMissing(rows, req.user._id);
+    // Validate missingFromDate and missingToDate
+    if (!missingFromDate || !missingToDate) {
+      const err = new Error('Both missingFromDate and missingToDate are required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    
+
+    const result = await missingService.saveMissing(
+      rows,
+      req.user._id,
+      missingFromDate,
+      missingToDate
+    );
 
     return sendSuccess(
       res,

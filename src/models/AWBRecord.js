@@ -109,6 +109,14 @@ const awbRecordSchema = new mongoose.Schema(
     missingAt: {
       type: Date,
     },
+    missingFromDate: {
+      type: Date,
+      // For clarity, these are only relevant when status === 'missing'
+    },
+    missingToDate: {
+      type: Date,
+      // For clarity, these are only relevant when status === 'missing'
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

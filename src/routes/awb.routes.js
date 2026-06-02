@@ -47,7 +47,10 @@ router.use(authenticate);
 
 // ── Missing AWB (before /:id param routes) ────────────────────────────────
 router.post('/missing/preview', uploadFile, missingCtrl.previewMissing);
-router.post('/missing/save',               missingCtrl.saveMissing);
+router.post('/missing/save', (req, res, next) => {
+
+  return missingCtrl.saveMissing(req, res, next);
+});
 
 // ── Specific named routes (before /:id param routes) ─────────────────────
 router.post('/scan',              scanAWBValidator, validate, ctrl.scanAWB);

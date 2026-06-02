@@ -99,54 +99,120 @@ const getAWBs = async (filters) => {
   } = filters;
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
-  const query = {};
 
-  // Date range — default to today if none provided
-  if (startDate || endDate) {
-    query.createdAt = {};
-    if (startDate) {
-      query.createdAt.$gte = new Date(startDate);
-    }
-    if (endDate) {
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-      query.createdAt.$lte = end;
-    }
-  } else {
-    const { start, end } = getTodayRange();
-    query.createdAt = { $gte: start, $lte: end };
-  }
-
+  // Build base query for filters except status/date
+  const baseQuery = {};
   if (search) {
-    // Match uppercase for search as well (case-insensitive)
-    query.awbId = { $regex: search.toUpperCase(), $options: 'i' };
+    baseQuery.awbId = { $regex: search.toUpperCase(), $options: 'i' };
   }
-
-  if (status) {
-    query.status = status;
-  }
-
   if (channelPartnerId) {
-    query.channelPartner = channelPartnerId;
+    baseQuery.channelPartner = channelPartnerId;
   }
-
   if (brandId) {
-    query.brand = brandId;
+    baseQuery.brand = brandId;
+  }
+  if (status) {
+    baseQuery.status = status;
   }
 
-  const sortDir = sortOrder === 'asc' ? 1 : -1;
-  const sort = { [sortBy]: sortDir };
+  // Date range logic
+  let start, end;
+  if (startDate || endDate) {
+    start = startDate ? new Date(startDate) : undefined;
+    end = endDate ? new Date(endDate) : undefined;
+    if (end) end.setHours(23, 59, 59, 999);
+  } else {
+    const range = getTodayRange();
+    start = range.start;
+    end = range.end;
+  }
 
-  const [records, total] = await Promise.all([
-    AWBRecord.find(query)
-      .populate(POPULATE_OPTS)
-      .sort(sort)
-      .skip(skip)
-      .limit(parseInt(limit)),
-    AWBRecord.countDocuments(query),
-  ]);
+  let queries = [];
 
-  return { records, pagination: buildPagination(page, limit, total) };
+  // If status "missing" is selected, filter only missing
+  if (baseQuery.status === 'missing' || status === 'missing') {
+    // Use missing window filter logic
+    let missingQuery = { ...baseQuery, status: 'missing' };
+    if (start || end) {
+      if (start && end) {
+        missingQuery.missingFromDate = { $lte: end };
+        missingQuery.missingToDate = { $gte: start };
+      } else if (start) {
+        missingQuery.missingToDate = { $gte: start };
+      } else if (end) {
+        missingQuery.missingFromDate = { $lte: end };
+      }
+    }
+    queries.push(missingQuery);
+  } else if (!status && (startDate || endDate)) {
+    // status filter empty, but date range selected: send both "normal" and "missing"
+    // 1. Normal (non-missing)
+    let normalQuery = { ...baseQuery, status: { $ne: 'missing' } };
+    normalQuery.createdAt = {};
+    if (start) normalQuery.createdAt.$gte = start;
+    if (end) normalQuery.createdAt.$lte = end;
+    // Remove empty createdAt object if no bounds
+    if (Object.keys(normalQuery.createdAt).length === 0) delete normalQuery.createdAt;
+    queries.push(normalQuery);
+    // 2. Missing
+    let missingQuery = { ...baseQuery, status: 'missing' };
+    if (start && end) {
+      missingQuery.missingFromDate = { $lte: end };
+      missingQuery.missingToDate = { $gte: start };
+    } else if (start) {
+      missingQuery.missingToDate = { $gte: start };
+    } else if (end) {
+      missingQuery.missingFromDate = { $lte: end };
+    }
+    queries.push(missingQuery);
+  } else {
+    // normal (non-missing) or no special case
+    let query = { ...baseQuery };
+    // for non-missing, use createdAt for date
+    if (query.status !== 'missing') {
+      if (start || end) {
+        query.createdAt = {};
+        if (start) query.createdAt.$gte = start;
+        if (end) query.createdAt.$lte = end;
+        if (Object.keys(query.createdAt).length === 0) delete query.createdAt;
+      }
+    }
+    queries.push(query);
+  }
+
+  // If only one query, run as normal
+  if (queries.length === 1) {
+    const q = queries[0];
+    const sortDir = sortOrder === 'asc' ? 1 : -1;
+    const sort = { [sortBy]: sortDir };
+    const [records, total] = await Promise.all([
+      AWBRecord.find(q)
+        .populate(POPULATE_OPTS)
+        .sort(sort)
+        .skip(skip)
+        .limit(parseInt(limit)),
+      AWBRecord.countDocuments(q),
+    ]);
+    return { records, pagination: buildPagination(page, limit, total) };
+  } else {
+    // For empty status & date selected, run $or for both normal & missing
+    // Unify them as a single paginated list
+
+    // Step 1: Combine queries with $or
+    const orQuery = { $or: queries };
+    const sortDir = sortOrder === 'asc' ? 1 : -1;
+    const sort = { [sortBy]: sortDir };
+
+    const [records, total] = await Promise.all([
+      AWBRecord.find(orQuery)
+        .populate(POPULATE_OPTS)
+        .sort(sort)
+        .skip(skip)
+        .limit(parseInt(limit)),
+      AWBRecord.countDocuments(orQuery),
+    ]);
+    return { records, pagination: buildPagination(page, limit, total) };
+  }
 };
 
 const getAWBById = async (id) => {

@@ -310,32 +310,66 @@ const previewMissing = async ({
  * @param {ObjectId} userId  - the logged-in user
  * @returns {{ saved: number, skipped: number }}
  */
-const saveMissing = async (rows, userId) => {
+/**
+ * Bulk-insert missing rows using ordered:false so a duplicate awbId (re-run)
+ * does not abort the whole batch - it is counted as skipped instead.
+ *
+ * @param {Array}    rows          - array of objects returned by previewMissing (must include brand)
+ * @param {ObjectId} userId        - the logged-in user
+ * @param {string|Date} missingFrom - Start date for missing range (YYYY-MM-DD or Date)
+ * @param {string|Date} missingTo   - End date for missing range (YYYY-MM-DD or Date)
+ * @returns {{ saved: number, skipped: number }}
+ */
+const saveMissing = async (rows, userId, missingFrom, missingTo) => {
+  // Console log for basic input check
+  console.log('[saveMissing] rows.length:', Array.isArray(rows) ? rows.length : 'invalid', 'userId:', userId);
+  console.log('[saveMissing] missingFrom:', missingFrom, 'missingTo:', missingTo);
+
   if (!Array.isArray(rows) || rows.length === 0) {
+    console.log('[saveMissing] No rows to save, throwing error.');
     const err = new Error('No rows to save.');
     err.statusCode = 400;
     throw err;
   }
 
+  // Validate missingFrom and missingTo
+  if (!missingFrom || !missingTo) {
+    console.log('[saveMissing] missingFrom or missingTo date missing.');
+    const err = new Error('missingFrom and missingTo dates are required.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Parse and normalize missingFromDate and missingToDate to full Date range
+  const fromDate = new Date(missingFrom);
+  fromDate.setHours(0,0,0,0);
+  const toDate = new Date(missingTo);
+  toDate.setHours(23,59,59,999);
+
   // Brand is now REQUIRED for every record
-  const docs = rows.map((row) => {
+  const docs = rows.map((row, idx) => {
     if (!row.brand) {
+      console.log(`[saveMissing] Row at index ${idx} missing brand:`, row);
       throw Object.assign(
         new Error('Brand is required for each row.'),
         { statusCode: 400 }
       );
     }
     return {
-      awbId:          String(row.awbId).toUpperCase(),
-      channelPartner: row.channelPartner,
-      brand:          row.brand, // must exist
-      status:         'missing',
-      scannedAt:      row.missingAt || new Date(),
-      missingAt:      row.missingAt || new Date(),
-      missingBy:      userId,
-      createdBy:      userId,
+      awbId:            String(row.awbId).toUpperCase(),
+      channelPartner:   row.channelPartner,
+      brand:            row.brand, // must exist
+      status:           'missing',
+      scannedAt:        row.missingAt || new Date(),
+      missingAt:        row.missingAt || new Date(),
+      missingFromDate:  fromDate,
+      missingToDate:    toDate,
+      missingBy:        userId,
+      createdBy:        userId,
     };
   });
+
+  console.log('[saveMissing] Prepared to insert docs count:', docs.length);
 
   let saved   = 0;
   let skipped = 0;
@@ -346,16 +380,20 @@ const saveMissing = async (rows, userId) => {
       rawResult: true,
     });
     saved = result.insertedCount ?? docs.length;
+    console.log(`[saveMissing] Inserted count: ${saved}`);
   } catch (bulkErr) {
     // ordered:false throws a BulkWriteError even on partial success
     if (bulkErr.name === 'MongoBulkWriteError' || bulkErr.code === 11000) {
       saved   = bulkErr.result?.nInserted ?? 0;
       skipped = docs.length - saved;
+      console.log(`[saveMissing] BulkWriteError: saved=${saved}, skipped=${skipped}`);
     } else {
+      console.log('[saveMissing] Non-BulkWriteError, rethrowing:', bulkErr);
       throw bulkErr;
     }
   }
 
+  console.log(`[saveMissing] Finished: saved=${saved}, skipped=${skipped}`);
   return { saved, skipped };
 };
 

@@ -71,24 +71,43 @@ const previewMissing = async (req, res, next) => {
  */
 const saveMissing = async (req, res, next) => {
   try {
-    const { rows } = req.body;
+    const { rows, missingFromDate, missingToDate } = req.body;
+
+    console.log('[Controller/saveMissing] Incoming saveMissing request:');
+    console.log('  rows.length:', Array.isArray(rows) ? rows.length : 'invalid');
+    console.log('  missingFromDate:', missingFromDate, 'missingToDate:', missingToDate);
 
     if (!Array.isArray(rows) || rows.length === 0) {
+      console.log('[Controller/saveMissing] Error: rows array is missing or empty.');
       const err = new Error('rows array is required and must not be empty.');
       err.statusCode = 400;
       throw err;
     }
-
-    // Optionally: Validate that every row contains brand
-    for (const row of rows) {
-      if (!row.brand) {
-        const err = new Error('Each row must include a brand. Brand is required for all rows.');
-        err.statusCode = 400;
-        throw err;
-      }
+    // Ensure all rows have brand, immediate check (defensive, service will recheck)
+    const missingBrand = rows.some(r => !r.brand);
+    if (missingBrand) {
+      console.log('[Controller/saveMissing] Error: At least one row missing brand.');
+      const err = new Error('brand is required in every row.');
+      err.statusCode = 400;
+      throw err;
     }
 
-    const result = await missingService.saveMissing(rows, req.user._id);
+    // Validate missingFromDate and missingToDate
+    if (!missingFromDate || !missingToDate) {
+      console.log('[Controller/saveMissing] Error: missingFromDate or missingToDate missing.');
+      const err = new Error('Both missingFromDate and missingToDate are required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const result = await missingService.saveMissing(
+      rows,
+      req.user._id,
+      missingFromDate,
+      missingToDate
+    );
+
+    console.log('[Controller/saveMissing] Save result:', result);
 
     return sendSuccess(
       res,
@@ -99,6 +118,7 @@ const saveMissing = async (req, res, next) => {
       result
     );
   } catch (error) {
+    console.log('[Controller/saveMissing] Caught error:', error);
     next(error);
   }
 };
