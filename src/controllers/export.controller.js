@@ -63,10 +63,10 @@ const exportReturnCSV = async (req, res, next) => {
     // Use the service for consistent filter/query handling
     const records = await returnService.getAWBsForExport(req.query);
 
-    // Format rows for export
+    // Format rows for export, show "Returned" if status is "-"
     const data = records.map((r) => ({
       'AWB ID': r.awbId,
-      'Status': r.status,
+      'Status': r.status === '-' ? 'returned' : r.status,
       'Channel Partner': r.channelPartner?.name || '',
       'Channel Partner Code': r.channelPartner?.code || '',
       'Brand': r.brand?.name || '',

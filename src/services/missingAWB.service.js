@@ -3,7 +3,7 @@
  * missingAWB.service.js
  *
  * Two-phase flow:
- *   1. previewMissing  - parse file, cross-check DB, return missing rows (no writes)
+ *   1. previewMissing  - parse file, cross-check DB, return AWBs in DB but missing from file (no writes)
  *   2. saveMissing     - bulk-insert confirmed missing rows into AWBRecord
  *
  * Brand is now required as per AWBRecord.js schema.
@@ -202,7 +202,7 @@ const EXTRACTORS = {
 };
 
 // ---------------------------------------------------------------------------
-// Phase 1 - Preview missing AWBs (no DB writes)
+// Phase 1 - Preview DB AWBs missing in uploaded file (no DB writes)
 // ---------------------------------------------------------------------------
 
 /**
@@ -214,7 +214,9 @@ const EXTRACTORS = {
  * @param {string}   endDate         - ISO / YYYY-MM-DD
  * @param {ObjectId} userId          - logged-in user _id
  *
- * @returns {{ partner, totalInFile, missing[] }}
+ * @returns {{ partner, totalInDB, missingInFile[] }}
+ *
+ * Returns AWBs that exist in DB but are missing from uploaded file.
  */
 const previewMissing = async ({
   fileBuffer,
@@ -265,13 +267,9 @@ const previewMissing = async ({
     }
   }
 
-  if (fileItems.length === 0) {
-    const err = new Error('No valid AWB entries found in the file after filtering.');
-    err.statusCode = 422;
-    throw err;
-  }
-
+  // fileAwbIds: all AWBs present in the uploaded file
   const fileAwbIds = fileItems.map((i) => i.awbId);
+  const fileAwbIdSet = new Set(fileAwbIds);
 
   // 4. Query DB for AWBs in the date range & channel partner
   const start = new Date(startDate);
@@ -281,33 +279,34 @@ const previewMissing = async ({
   const dbQuery = {
     channelPartner: channelPartnerId,
     scannedAt: { $gte: start, $lte: end },
-    awbId: { $in: fileAwbIds },
+    ...(brandId ? { brand: brandId } : {}),
   };
 
-  const existingRecords = await AWBRecord.find(dbQuery).select('awbId').lean();
-  const existingSet = new Set(existingRecords.map((r) => r.awbId));
+  // Find all AWBs in DB in the range (that have this brand/channel partner)
+  const dbRecords = await AWBRecord.find(dbQuery).lean();
+  const totalInDB = dbRecords.length;
 
-  // 5. Find missing (present in file, absent in DB)
-  const missing = fileItems.filter((item) => !existingSet.has(item.awbId));
+  // 5. Find missing in file (present in DB, absent in file)
+  const missingInFile = dbRecords.filter((record) => !fileAwbIdSet.has(record.awbId));
 
-  if (missing.length === 0) {
-    return { partner, totalInFile: fileItems.length, missing: [] };
+  if (missingInFile.length === 0) {
+    return { partner, totalInDB, missing: [] };
   }
 
-  // 6. Shape response rows; brand is always set
-  const missingRows = missing.map((item) => ({
-    awbId:           item.awbId,
-    channelPartner:  channelPartnerId, // raw ID - frontend displays name
-    brand:           item.brand,
-    status:          'missing',
-    missingAt:       item.missingAt,
+  // 6. Shape response rows
+  const missingRows = missingInFile.map((record) => ({
+    awbId:           record.awbId,
+    channelPartner:  record.channelPartner,
+    brand:           record.brand,
+    status:          'missing_in_file',
+    missingAt:       record.scannedAt || null,
     missingBy:       userId,
     createdBy:       userId,
   }));
 
   return {
     partner,
-    totalInFile: fileItems.length,
+    totalInDB,
     missing: missingRows,
   };
 };
@@ -334,10 +333,13 @@ const previewMissing = async ({
  * @param {string|Date} missingFrom   - Start date for missing range (YYYY-MM-DD or Date).
  * @param {string|Date} missingTo     - End date for missing range (YYYY-MM-DD or Date).
  * @returns {{ saved: number, skipped: number }}
+ * 
+ * 
  */
+
 const saveMissing = async (rows, userId, missingFrom, missingTo) => {
   if (!Array.isArray(rows) || rows.length === 0) {
-    const err = new Error('No rows to save.');
+    const err = new Error('No rows to process.');
     err.statusCode = 400;
     throw err;
   }
@@ -358,43 +360,114 @@ const saveMissing = async (rows, userId, missingFrom, missingTo) => {
 
   // Parse and normalize missingFromDate and missingToDate to full Date range
   const fromDate = new Date(missingFrom);
-  fromDate.setHours(0,0,0,0);
+  fromDate.setHours(0, 0, 0, 0);
   const toDate = new Date(missingTo);
-  toDate.setHours(23,59,59,999);
+  toDate.setHours(23, 59, 59, 999);
 
-  const docs = rows.map((row) => ({
-    awbId:          (row.awbId || '').toUpperCase(),
-    channelPartner: row.channelPartner,
-    brand:          row.brand,
-    status:         'missing',
-    scannedAt:      row.missingAt || new Date(),   // For historical, retains preview's missingAt
-    missingAt:      row.missingAt || new Date(),   // Should be the preview's missingAt per row
-    missingFromDate: fromDate,                     // New: explicit missing range start
-    missingToDate:   toDate,                       // New: explicit missing range end
-    missingBy:      userId,
-    createdBy:      userId,
-  }));
+  // Convert all AWB IDs to uppercase for lookup consistency
+  const awbIds = rows.map(r => (r.awbId || '').toUpperCase()).filter(Boolean);
 
-  let saved   = 0;
-  let skipped = 0;
+  // Find all AWBRecords matching these AWB IDs (already present in db)
+  const existingRecords = await AWBRecord.find({ awbId: { $in: awbIds } });
 
-  try {
-    const result = await AWBRecord.insertMany(docs, {
-      ordered: false,
-      rawResult: true,
-    });
-    saved = result.insertedCount ?? docs.length;
-  } catch (bulkErr) {
-    // ordered:false throws a BulkWriteError even on partial success
-    if (bulkErr.name === 'MongoBulkWriteError' || bulkErr.code === 11000) {
-      saved   = bulkErr.result?.nInserted ?? 0;
-      skipped = docs.length - saved;
-    } else {
-      throw bulkErr;
-    }
+  if (existingRecords.length === 0) {
+    // Nothing to mark as missing
+    return { saved: 0, skipped: rows.length };
   }
+
+  // Collect AWB IDs that exist in db
+  const existingAwbIdSet = new Set(existingRecords.map(rec => rec.awbId));
+
+  // Only rows whose awbId is present in db should be updated
+  const toUpdateAwbIds = rows
+    .map(r => (r.awbId || '').toUpperCase())
+    .filter(awbid => existingAwbIdSet.has(awbid));
+
+  if (toUpdateAwbIds.length === 0) {
+    return { saved: 0, skipped: rows.length };
+  }
+
+  // Update their status to 'missing', set missingFromDate, missingToDate, missingBy, etc.
+  const updateResult = await AWBRecord.updateMany(
+    { awbId: { $in: toUpdateAwbIds } },
+    {
+      $set: {
+        status: "missing",
+        missingFromDate: fromDate,
+        missingToDate: toDate,
+        missingBy: userId,
+        // Optionally update missingAt as well if present in input row
+        // but bulk update can't set per-row values, so we keep existing missingAt
+      }
+    }
+  );
+
+  const saved = updateResult.modifiedCount || 0;
+  const skipped = rows.length - saved;
 
   return { saved, skipped };
 };
 
+
+// const saveMissing = async (rows, userId, missingFrom, missingTo) => {
+//   if (!Array.isArray(rows) || rows.length === 0) {
+//     const err = new Error('No rows to save.');
+//     err.statusCode = 400;
+//     throw err;
+//   }
+//   // Require brand in all rows
+//   const missingBrandCount = rows.filter(r => !r.brand).length;
+//   if (missingBrandCount > 0) {
+//     const err = new Error('Brand is required for all rows.');
+//     err.statusCode = 400;
+//     throw err;
+//   }
+
+//   // Validate missingFrom and missingTo
+//   if (!missingFrom || !missingTo) {
+//     const err = new Error('missingFrom and missingTo dates are required.');
+//     err.statusCode = 400;
+//     throw err;
+//   }
+
+//   // Parse and normalize missingFromDate and missingToDate to full Date range
+//   const fromDate = new Date(missingFrom);
+//   fromDate.setHours(0,0,0,0);
+//   const toDate = new Date(missingTo);
+//   toDate.setHours(23,59,59,999);
+
+//   const docs = rows.map((row) => ({
+//     awbId:          (row.awbId || '').toUpperCase(),
+//     channelPartner: row.channelPartner,
+//     brand:          row.brand,
+//     status:         'missing',
+//     scannedAt:      row.missingAt || new Date(),   // For historical, retains preview's missingAt
+//     missingAt:      row.missingAt || new Date(),   // Should be the preview's missingAt per row
+//     missingFromDate: fromDate,                     // New: explicit missing range start
+//     missingToDate:   toDate,                       // New: explicit missing range end
+//     missingBy:      userId,
+//     createdBy:      userId,
+//   }));
+
+//   let saved   = 0;
+//   let skipped = 0;
+
+//   try {
+//     const result = await AWBRecord.insertMany(docs, {
+//       ordered: false,
+//       rawResult: true,
+//     });
+//     saved = result.insertedCount ?? docs.length;
+//   } catch (bulkErr) {
+//     // ordered:false throws a BulkWriteError even on partial success
+//     if (bulkErr.name === 'MongoBulkWriteError' || bulkErr.code === 11000) {
+//       saved   = bulkErr.result?.nInserted ?? 0;
+//       skipped = docs.length - saved;
+//     } else {
+//       throw bulkErr;
+//     }
+//   }
+
+//   return { saved, skipped };
+// };
 module.exports = { previewMissing, saveMissing };
