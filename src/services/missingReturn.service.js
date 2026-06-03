@@ -151,15 +151,18 @@ function extractFlipkart(row) {
 }
 
 function extractMeesho(row) {
-  // Only SHIPPED rows are relevant
+  // Only extract rows where Reason for Credit Entry is "SHIPPED"
   const reason = String(row['Reason for Credit Entry'] || '').trim().toLowerCase();
   if (reason !== 'shipped') return null;
 
-  const awbId = String(row['Packet Id'] || '').trim();
+  // Extract AWB/Packet Id and Order Date fields
+  const awbId = String(row['Packet Id'] || '').trim().toUpperCase();
   if (!awbId) return null;
 
   const missingAt = parseDMY(row['Order Date']);
-  return { awbId: awbId.toUpperCase(), missingAt };
+
+  // This returned object will later be compared against DB data (only if shipped)
+  return { awbId, missingAt };
 }
 
 function extractMyntra(row) {

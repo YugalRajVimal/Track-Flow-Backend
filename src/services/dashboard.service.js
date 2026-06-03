@@ -85,6 +85,7 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
     totalReturnRecords,
     awbMissingRecordsCount,
     returnMissingRecordsCount,
+    returnAnalytics,
   ] = await Promise.all([
 
     // Total scans in selected range (with channel/brand if supplied) -
@@ -241,6 +242,42 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
 
     // Return missing records count (date on missingFrom/ToRange)
     ReturnRecord.countDocuments(returnMissingFilters),
+
+    // Return analytics by channelPartner, same structure as channelPartnerAnalytics above
+    ReturnRecord.aggregate([
+      { $match: aggMatch },
+      {
+        $group: {
+          _id: '$channelPartner',
+          totalReturns: {
+            $sum: 1,
+          },
+          missing: {
+            $sum: { $cond: [{ $eq: ['$status', 'missing'] }, 1, 0] },
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: 'channelpartners',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'channelPartner',
+        },
+      },
+      { $unwind: { path: '$channelPartner', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          channelPartnerId: '$_id',
+          channelPartnerName: '$channelPartner.name',
+          channelPartnerCode: '$channelPartner.code',
+          totalReturns: 1,
+          missing: 1,
+        },
+      },
+      { $sort: { totalReturns: -1 } },
+      { $limit: 10 },
+    ]),
   ]);
 
   return {
@@ -254,6 +291,7 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
     totalReturnRecords,
     awbMissingRecordsCount,
     returnMissingRecordsCount,
+    returnAnalytics, // new field
   };
 };
 

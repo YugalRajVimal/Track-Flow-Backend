@@ -151,13 +151,25 @@ function extractFlipkart(row) {
   return { awbId, missingAt };
 }
 
+/**
+ * Extracts data from Meesho CSV/XLS rows for "SHIPPED" Reason for Credit Entry.
+ * Only rows with "Reason for Credit Entry" as SHIPPED will be included for further comparison with the database.
+ *
+ * @param {Object} row - Cleaned row from the parsed Meesho file
+ * @returns {Object|null} - { awbId, missingAt } if valid shipped entry, else null
+ */
 function extractMeesho(row) {
+  // Only extract rows where Reason for Credit Entry is "SHIPPED"
   const reason = String(row['Reason for Credit Entry'] || '').trim().toLowerCase();
   if (reason !== 'shipped') return null;
+
+  // Extract AWB/Packet Id and Order Date fields
   const awbId = String(row['Packet Id'] || '').trim().toUpperCase();
   if (!awbId) return null;
+
   const missingAt = parseDMY(row['Order Date']);
-  // Meesho files don't contain Brand
+
+  // This returned object will later be compared against DB data (only if shipped)
   return { awbId, missingAt };
 }
 
