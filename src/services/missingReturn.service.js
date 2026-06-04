@@ -153,7 +153,7 @@ function extractFlipkart(row) {
 function extractMeesho(row) {
   // Only extract rows where Reason for Credit Entry is "SHIPPED"
   const reason = String(row['Reason for Credit Entry'] || '').trim().toLowerCase();
-  if (reason !== 'shipped') return null;
+  if (reason !== 'shipped' && reason !== 'delivered') return null;
 
   // Extract AWB/Packet Id and Order Date fields
   const awbId = String(row['Packet Id'] || '').trim().toUpperCase();
@@ -246,7 +246,7 @@ const previewMissing = async ({
   const extract = EXTRACTORS[partner];
 
   // 3. Extract AWB IDs from file, ensuring awbId is uppercase already due to updated extractors
-  const fileItems = []; // { awbId, missingAt }
+  const fileItems = [];
   for (const row of rows) {
     const item = extract(row);
     if (item && item.awbId) fileItems.push(item);
@@ -260,7 +260,7 @@ const previewMissing = async ({
 
   const fileAwbIds = fileItems.map((i) => i.awbId);
 
-  // 4. Query DB for AWBs in the date range & channel partner
+  // 4. Query DB for AWBs in the date range, channel partner, brand, and status "dispatched" only
   const start = new Date(startDate);
   const end   = new Date(endDate);
   end.setHours(23, 59, 59, 999);
@@ -270,12 +270,13 @@ const previewMissing = async ({
     brand: brandId,
     scannedAt: { $gte: start, $lte: end },
     awbId: { $in: fileAwbIds },
+    status: 'dispatched', // <--- Only consider dispatched records as "existing in DB"
   };
 
   const existingRecords = await ReturnRecord.find(dbQuery).select('awbId').lean();
   const existingSet = new Set(existingRecords.map((r) => String(r.awbId).toUpperCase()));
 
-  // 5. Find missing (present in file, absent in DB)
+  // 5. Find missing (present in file, absent in DB "dispatched" data)
   const missing = fileItems.filter((item) => !existingSet.has(item.awbId));
 
   if (missing.length === 0) {
@@ -286,7 +287,7 @@ const previewMissing = async ({
   // REQUIRED: Both channelPartner and brand MUST be set
   const missingRows = missing.map((item) => ({
     awbId:          item.awbId.toUpperCase(),
-    channelPartner: channelPartnerId, // raw ID - frontend displays the name
+    channelPartner: channelPartnerId,
     brand:          brandId,
     status:         'missing',
     missingAt:      item.missingAt,

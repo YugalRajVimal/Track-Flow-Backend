@@ -161,7 +161,7 @@ function extractFlipkart(row) {
 function extractMeesho(row) {
   // Only extract rows where Reason for Credit Entry is "SHIPPED"
   const reason = String(row['Reason for Credit Entry'] || '').trim().toLowerCase();
-  if (reason !== 'shipped') return null;
+  if (reason !== 'shipped' && reason !== 'delivered') return null;
 
   // Extract AWB/Packet Id and Order Date fields
   const awbId = String(row['Packet Id'] || '').trim().toUpperCase();
@@ -229,10 +229,8 @@ const previewMissing = async ({
 }) => {
   // 1. Parse file
   const { rows, headers } = parseFile(fileBuffer, originalname);
-  console.log('[previewMissing] Parsed file:', { rowCount: rows.length, headers });
 
   if (rows.length === 0) {
-    console.log('[previewMissing] Error: Uploaded file contains no data rows.');
     const err = new Error('The uploaded file contains no data rows.');
     err.statusCode = 422;
     throw err;
@@ -240,9 +238,7 @@ const previewMissing = async ({
 
   // 2. Detect partner format
   const partner = detectPartner(headers);
-  console.log('[previewMissing] Detected partner:', partner);
   if (!partner) {
-    console.log('[previewMissing] Error: Could not detect file format for headers:', headers);
     const err = new Error(
       'Could not detect the file format. Expected one of: ' +
       'Flipkart (Tracking ID), Meesho (Packet Id), Myntra (AWB Number), ' +
@@ -253,7 +249,6 @@ const previewMissing = async ({
   }
 
   if (!brandId) {
-    console.log('[previewMissing] Error: Brand is required.');
     const err = new Error('Brand is required.');
     err.statusCode = 422;
     throw err;
@@ -262,22 +257,19 @@ const previewMissing = async ({
   const extract = EXTRACTORS[partner];
 
   // 3. Extract AWB IDs from file
-  const fileItems = []; // { awbId, missingAt }
+  const fileItems = [];
   for (const row of rows) {
     const item = extract(row);
     if (item && item.awbId) {
-      // Always attach brand here (brandId is required and supplied to this function)
       item.brand = brandId;
       fileItems.push(item);
     }
   }
-  console.log('[previewMissing] Extracted fileItems count:', fileItems.length);
 
-  // fileAwbIds: all AWBs present in the uploaded file
   const fileAwbIds = fileItems.map((i) => i.awbId);
   const fileAwbIdSet = new Set(fileAwbIds);
 
-  // 4. Query DB for AWBs in the date range & channel partner
+  // 4. Query DB for AWBs in the date range, channel partner, brand, and status "dispatched" only
   const start = new Date(startDate);
   const end   = new Date(endDate);
   end.setHours(23, 59, 59, 999);
@@ -286,20 +278,17 @@ const previewMissing = async ({
     channelPartner: channelPartnerId,
     scannedAt: { $gte: start, $lte: end },
     ...(brandId ? { brand: brandId } : {}),
+    status: 'dispatched',
   };
-  console.log('[previewMissing] Querying DB with:', dbQuery);
 
-  // Find all AWBs in DB in the range (that have this brand/channel partner)
+  // Find all AWBs in DB in the range, only with status 'dispatched'
   const dbRecords = await AWBRecord.find(dbQuery).lean();
   const totalInDB = dbRecords.length;
-  console.log('[previewMissing] DB Records found:', totalInDB);
 
   // 5. Find missing in file (present in DB, absent in file)
   const missingInFile = dbRecords.filter((record) => !fileAwbIdSet.has(record.awbId));
-  console.log('[previewMissing] missingInFile count:', missingInFile.length);
 
   if (missingInFile.length === 0) {
-    console.log('[previewMissing] None missing. Returning.');
     return { partner, totalInDB, missing: [] };
   }
 
@@ -313,8 +302,6 @@ const previewMissing = async ({
     missingBy:       userId,
     createdBy:       userId,
   }));
-
-  console.log('[previewMissing] Returning response with missingRows count:', missingRows.length);
 
   return {
     partner,
