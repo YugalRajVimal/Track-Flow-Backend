@@ -5,8 +5,8 @@ const getMeta = (req) => ({ ipAddress: req.ip, userAgent: req.get('user-agent') 
 
 const scanAWB = async (req, res, next) => {
   try {
-    const { awbId, channelPartnerId, brandId } = req.body;
-    const record = await awbService.scanAWB({ awbId, channelPartnerId, brandId }, req.user._id, getMeta(req));
+    const { awbId, channelPartnerId, brandId, backDateScan, date  } = req.body;
+    const record = await awbService.scanAWB({ awbId, channelPartnerId, brandId, backDateScan, date  }, req.user._id, getMeta(req));
     return sendSuccess(res, 201, 'AWB scanned successfully', record);
   } catch (error) {
     next(error);

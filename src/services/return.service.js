@@ -8,7 +8,8 @@ const POPULATE_OPTS = [
   { path: 'createdBy', select: 'name email' },
 ];
 
-const scanAWB = async ({ awbId, channelPartnerId, brandId }, userId, meta) => {
+const scanAWB = async ({ awbId, channelPartnerId, brandId, backDateScan, backDate }, userId, meta) => {
+  console.log(backDateScan,backDate);
   const awbIdUpper = awbId ? awbId.toUpperCase() : awbId;
   const existing = await ReturnRecord.findOne({ awbId: awbIdUpper });
   if (existing) {
@@ -17,12 +18,21 @@ const scanAWB = async ({ awbId, channelPartnerId, brandId }, userId, meta) => {
     throw err;
   }
 
+  let scannedAtValue = new Date();
+  console.log(backDateScan,backDate)
+  if (backDateScan && backDate) {
+    scannedAtValue = new Date(backDate);
+    // Defensive: If invalid date string, fallback to now
+    if (isNaN(scannedAtValue.getTime())) scannedAtValue = new Date();
+  }
+  console.log(scannedAtValue);
+
   const record = await ReturnRecord.create({
     awbId: awbIdUpper,
     channelPartner: channelPartnerId,
     brand: brandId,
     status: '-',
-    scannedAt: new Date(),
+    scannedAt: scannedAtValue,
     createdBy: userId,
   });
 
@@ -53,7 +63,7 @@ const getAWBs = async (filters) => {
     brandId = '',
     startDate = '',
     endDate = '',
-    sortBy = 'createdAt',
+    sortBy = 'scannedAt',
     sortOrder = 'desc',
   } = filters;
 
@@ -102,10 +112,10 @@ const getAWBs = async (filters) => {
     // normal records only with explicit status (should only allow '-')
     mongoFilter = { ...baseFilter, status };
     if (start || end) {
-      mongoFilter.createdAt = {};
-      if (start) mongoFilter.createdAt.$gte = start;
-      if (end) mongoFilter.createdAt.$lte = end;
-      if (!Object.keys(mongoFilter.createdAt).length) delete mongoFilter.createdAt;
+      mongoFilter.scannedAt = {};
+      if (start) mongoFilter.scannedAt.$gte = start;
+      if (end) mongoFilter.scannedAt.$lte = end;
+      if (!Object.keys(mongoFilter.scannedAt).length) delete mongoFilter.scannedAt;
     }
   } else {
     // No status: show both missing and normal within rules.
@@ -113,10 +123,10 @@ const getAWBs = async (filters) => {
     // 1. Normal, not missing
     const normal = { ...baseFilter, status: { $ne: 'missing' } };
     if (start || end) {
-      normal.createdAt = {};
-      if (start) normal.createdAt.$gte = start;
-      if (end) normal.createdAt.$lte = end;
-      if (!Object.keys(normal.createdAt).length) delete normal.createdAt;
+      normal.scannedAt = {};
+      if (start) normal.scannedAt.$gte = start;
+      if (end) normal.scannedAt.$lte = end;
+      if (!Object.keys(normal.scannedAt).length) delete normal.scannedAt;
     }
     $or.push(normal);
     // 2. Missing

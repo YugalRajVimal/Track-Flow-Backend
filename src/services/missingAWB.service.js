@@ -229,8 +229,10 @@ const previewMissing = async ({
 }) => {
   // 1. Parse file
   const { rows, headers } = parseFile(fileBuffer, originalname);
+  console.log('[previewMissing] Parsed file:', { rowCount: rows.length, headers });
 
   if (rows.length === 0) {
+    console.log('[previewMissing] Error: Uploaded file contains no data rows.');
     const err = new Error('The uploaded file contains no data rows.');
     err.statusCode = 422;
     throw err;
@@ -238,7 +240,9 @@ const previewMissing = async ({
 
   // 2. Detect partner format
   const partner = detectPartner(headers);
+  console.log('[previewMissing] Detected partner:', partner);
   if (!partner) {
+    console.log('[previewMissing] Error: Could not detect file format for headers:', headers);
     const err = new Error(
       'Could not detect the file format. Expected one of: ' +
       'Flipkart (Tracking ID), Meesho (Packet Id), Myntra (AWB Number), ' +
@@ -249,6 +253,7 @@ const previewMissing = async ({
   }
 
   if (!brandId) {
+    console.log('[previewMissing] Error: Brand is required.');
     const err = new Error('Brand is required.');
     err.statusCode = 422;
     throw err;
@@ -266,6 +271,7 @@ const previewMissing = async ({
       fileItems.push(item);
     }
   }
+  console.log('[previewMissing] Extracted fileItems count:', fileItems.length);
 
   // fileAwbIds: all AWBs present in the uploaded file
   const fileAwbIds = fileItems.map((i) => i.awbId);
@@ -281,15 +287,19 @@ const previewMissing = async ({
     scannedAt: { $gte: start, $lte: end },
     ...(brandId ? { brand: brandId } : {}),
   };
+  console.log('[previewMissing] Querying DB with:', dbQuery);
 
   // Find all AWBs in DB in the range (that have this brand/channel partner)
   const dbRecords = await AWBRecord.find(dbQuery).lean();
   const totalInDB = dbRecords.length;
+  console.log('[previewMissing] DB Records found:', totalInDB);
 
   // 5. Find missing in file (present in DB, absent in file)
   const missingInFile = dbRecords.filter((record) => !fileAwbIdSet.has(record.awbId));
+  console.log('[previewMissing] missingInFile count:', missingInFile.length);
 
   if (missingInFile.length === 0) {
+    console.log('[previewMissing] None missing. Returning.');
     return { partner, totalInDB, missing: [] };
   }
 
@@ -303,6 +313,8 @@ const previewMissing = async ({
     missingBy:       userId,
     createdBy:       userId,
   }));
+
+  console.log('[previewMissing] Returning response with missingRows count:', missingRows.length);
 
   return {
     partner,

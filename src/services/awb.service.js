@@ -8,7 +8,7 @@ const POPULATE_OPTS = [
   { path: 'createdBy', select: 'name email' },
 ];
 
-const scanAWB = async ({ awbId, channelPartnerId, brandId }, userId, meta) => {
+const scanAWB = async ({ awbId, channelPartnerId, brandId, backDateScan, date }, userId, meta) => {
   const awbIdUpper = awbId ? awbId.toUpperCase() : awbId;
   const existing = await AWBRecord.findOne({ awbId: awbIdUpper });
   if (existing) {
@@ -17,12 +17,25 @@ const scanAWB = async ({ awbId, channelPartnerId, brandId }, userId, meta) => {
     throw err;
   }
 
+  let scannedAtValue = new Date();
+  // If backDateScan is true and a valid date is provided, use that for scannedAt
+  if (backDateScan && date) {
+    // Accept both string and Date for compatibility from frontend
+    scannedAtValue = new Date(date);
+    // Optionally, ensure date is valid
+    if (isNaN(scannedAtValue)) {
+      const err = new Error('Invalid backdate provided for scan');
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
   const record = await AWBRecord.create({
     awbId: awbIdUpper,
     channelPartner: channelPartnerId,
     brand: brandId,
     status: 'dispatched',
-    scannedAt: new Date(),
+    scannedAt: scannedAtValue,
     createdBy: userId,
   });
 
@@ -94,7 +107,7 @@ const getAWBs = async (filters) => {
     brandId = '',
     startDate = '',
     endDate = '',
-    sortBy = 'createdAt',
+    sortBy = 'scannedAt',
     sortOrder = 'desc',
   } = filters;
 
@@ -148,11 +161,11 @@ const getAWBs = async (filters) => {
     // status filter empty, but date range selected: send both "normal" and "missing"
     // 1. Normal (non-missing)
     let normalQuery = { ...baseQuery, status: { $ne: 'missing' } };
-    normalQuery.createdAt = {};
-    if (start) normalQuery.createdAt.$gte = start;
-    if (end) normalQuery.createdAt.$lte = end;
-    // Remove empty createdAt object if no bounds
-    if (Object.keys(normalQuery.createdAt).length === 0) delete normalQuery.createdAt;
+    normalQuery.scannedAt = {};
+    if (start) normalQuery.scannedAt.$gte = start;
+    if (end) normalQuery.scannedAt.$lte = end;
+    // Remove empty scannedAt object if no bounds
+    if (Object.keys(normalQuery.scannedAt).length === 0) delete normalQuery.scannedAt;
     queries.push(normalQuery);
     // 2. Missing
     let missingQuery = { ...baseQuery, status: 'missing' };
@@ -171,10 +184,10 @@ const getAWBs = async (filters) => {
     // for non-missing, use createdAt for date
     if (query.status !== 'missing') {
       if (start || end) {
-        query.createdAt = {};
-        if (start) query.createdAt.$gte = start;
-        if (end) query.createdAt.$lte = end;
-        if (Object.keys(query.createdAt).length === 0) delete query.createdAt;
+        query.scannedAt = {};
+        if (start) query.scannedAt.$gte = start;
+        if (end) query.scannedAt.$lte = end;
+        if (Object.keys(query.scannedAt).length === 0) delete query.scannedAt;
       }
     }
     queries.push(query);
