@@ -27,7 +27,7 @@ function detectPartner(headers) {
   if (h.includes('tracking id')) return 'flipkart';
   if (h.includes('awb number'))   return 'meesho';
   if (h.includes('awb number'))  return 'myntra';
-  if (h.includes('awb no.'))     return 'website';
+  if (h.includes('awb'))     return 'website';
 
   return null;
 }
@@ -215,7 +215,7 @@ function extractMyntra(row) {
 }
 
 function extractWebsite(row) {
-  const awbId = String(row['AWB NO.'] || '').trim();
+  const awbId = String(row['AWB'] || '').trim();
   if (!awbId) return null;
 
   const missingAt = parseDMY(row['Dispatch by date']);
@@ -268,7 +268,7 @@ const previewMissing = async ({
     const err = new Error(
       'Could not detect the file format. Expected one of: ' +
       'Flipkart (Tracking ID), Meesho (AWB Number, Delivered Date), Myntra (AWB Number), ' +
-      'or Website Excel (AWB NO.).'
+      'or Website Excel (AWB).'
     );
     err.statusCode = 422;
     throw err;
