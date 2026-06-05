@@ -25,7 +25,7 @@ function detectPartner(headers) {
   const h = headers.map((s) => String(s).trim().toLowerCase());
 
   if (h.includes('tracking id')) return 'flipkart';
-  if (h.includes('packet id'))   return 'meesho';
+  if (h.includes('awb number'))   return 'meesho';
   if (h.includes('awb number'))  return 'myntra';
   if (h.includes('awb no.'))     return 'website';
 
@@ -69,6 +69,7 @@ function parseDMY(raw) {
  * Parse an uploaded file buffer into an array of plain row objects.
  * Handles CSV (any variant) and Excel (.xls / .xlsx).
  * For Excel files the sheet named "AWB wise Details" is preferred.
+ * For Meesho files, ignore the top 7 rows (use 8th row as headers).
  *
  * @param {Buffer} buffer
  * @param {string} originalname  - used to decide CSV vs Excel
@@ -87,14 +88,57 @@ function parseFile(buffer, originalname) {
       workbook.SheetNames[0];
 
     const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-    const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
+    // Default: process all rows
+    let rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false, range: undefined });
+    let headers = rows.length > 0 ? Object.keys(rows[0]) : [];
 
-    return { rows, headers };
+    // Meesho files: ignore top 7 rows (rows are 0-indexed in XLSX)
+    if (
+      rows.length > 7 &&
+      // Use headers (lowercase/trimmed) to check if this is a Meesho layout
+      Object.keys(rows[7]).some(
+        h => String(h).trim().toLowerCase() === 'awb number'
+      )
+    ) {
+      // Reparse the sheet starting from row 7 as header row
+      // In XLSX: range can be used as [s, e] --> or for start row only: {s: {r: startRow}}
+      // But XLSX.utils.sheet_to_json({range: n}) uses n as header row (0-indexed), so rows below are data
+      rows = XLSX.utils.sheet_to_json(sheet, { defval: '', header: 1 });
+      const data = rows.slice(7); // skip first 7 rows, 8th is header
+      if (data.length > 0) {
+        const headerRow = data[0];
+        const normalizedHeaders = headerRow.map(h => (h ? String(h).trim() : ''));
+        const rowObjs = data.slice(1).map(r => {
+          const rowObj = {};
+          normalizedHeaders.forEach((h, idx) => rowObj[h] = r[idx]);
+          return rowObj;
+        });
+        // Only include rows that are non-empty (by AWB Number)
+        const filteredRows = rowObjs.filter(r => String(r['AWB Number'] || '').trim());
+        return {
+          rows: filteredRows,
+          headers: normalizedHeaders,
+        };
+      } else {
+        return { rows: [], headers: [] };
+      }
+    } else {
+      return { rows, headers };
+    }
   }
 
   // CSV path
   const rawText = buffer.toString('utf8');
+
+  // Check for Meesho CSV: are the header fields after skipping 7 rows?
+  const lines = rawText.split(/\r\n|\n/);
+  let textForPapa;
+  if (lines.length > 7 && /awb number/i.test(lines[7])) {
+    // skip top 7 rows, start at 8th row (index 7)
+    textForPapa = lines.slice(7).join('\n');
+  } else {
+    textForPapa = rawText;
+  }
 
   // Problem: Myntra (and some portals) wraps every CSV field in TRIPLE
   // double-quotes, e.g.  """MYSC1299918394"""
@@ -106,7 +150,7 @@ function parseFile(buffer, originalname) {
   // Fix: collapse any run of 2+ consecutive double-quotes to a single
   // double-quote before handing the text to PapaParse.  This normalises the
   // quoting while preserving the structure PapaParse needs.
-  const text = rawText.replace(/"""/g, '');
+  const text = textForPapa.replace(/"""/g, '');
   
   const result = Papa.parse(text, {
     header: true,
@@ -150,19 +194,12 @@ function extractFlipkart(row) {
   return { awbId: awbId.toUpperCase(), missingAt };
 }
 
+// Correction for meesho: use AWB Number and Delivered Date from file.
 function extractMeesho(row) {
-  // Only extract rows where Reason for Credit Entry is "SHIPPED"
-  const reason = String(row['Reason for Credit Entry'] || '').trim().toLowerCase();
-  if (reason !== 'shipped' && reason !== 'delivered') return null;
-
-  // Extract AWB/Packet Id and Order Date fields
-  const awbId = String(row['Packet Id'] || '').trim().toUpperCase();
+  const awbId = String(row['AWB Number'] || '').trim();
   if (!awbId) return null;
-
-  const missingAt = parseDMY(row['Order Date']);
-
-  // This returned object will later be compared against DB data (only if shipped)
-  return { awbId, missingAt };
+  const missingAt = parseDMY(row['Delivered Date']);
+  return { awbId: awbId.toUpperCase(), missingAt };
 }
 
 function extractMyntra(row) {
@@ -230,7 +267,7 @@ const previewMissing = async ({
   if (!partner) {
     const err = new Error(
       'Could not detect the file format. Expected one of: ' +
-      'Flipkart (Tracking ID), Meesho (Packet Id), Myntra (AWB Number), ' +
+      'Flipkart (Tracking ID), Meesho (AWB Number, Delivered Date), Myntra (AWB Number), ' +
       'or Website Excel (AWB NO.).'
     );
     err.statusCode = 422;
@@ -245,11 +282,26 @@ const previewMissing = async ({
 
   const extract = EXTRACTORS[partner];
 
-  // 3. Extract AWB IDs from file, ensuring awbId is uppercase already due to updated extractors
+  // Prepare date range for filtering (only for Meesho)
+  const fromDate = new Date(startDate);
+  fromDate.setHours(0, 0, 0, 0);
+  const toDate = new Date(endDate);
+  toDate.setHours(23, 59, 59, 999);
+
+  // 3. Extract AWB IDs from file, with filtering by Delivered Date for Meesho
   const fileItems = [];
   for (const row of rows) {
-    const item = extract(row);
-    if (item && item.awbId) fileItems.push(item);
+    if (partner === 'meesho') {
+      // Only keep if Delivered Date is within the input range
+      const deliveredDate = parseDMY(row['Delivered Date']);
+      if (!(deliveredDate instanceof Date) || isNaN(deliveredDate)) continue;
+      if (deliveredDate < fromDate || deliveredDate > toDate) continue;
+      const item = extract(row);
+      if (item && item.awbId) fileItems.push(item);
+    } else {
+      const item = extract(row);
+      if (item && item.awbId) fileItems.push(item);
+    }
   }
 
   if (fileItems.length === 0) {
