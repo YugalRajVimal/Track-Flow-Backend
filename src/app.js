@@ -16,6 +16,8 @@ const returnRoutes = require('./routes/return.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const auditLogRoutes = require('./routes/auditLog.routes');
 const exportRoutes = require('./routes/export.routes');
+const offlineRoutes = require('./routes/offline.routes');
+
 
 const app = express();
 
@@ -89,6 +91,8 @@ app.use(`${API_PREFIX}/returns`, returnRoutes);
 app.use(`${API_PREFIX}/dashboard`, dashboardRoutes);
 app.use(`${API_PREFIX}/audit-logs`, auditLogRoutes);
 app.use(`${API_PREFIX}/export`, exportRoutes);
+app.use(`${API_PREFIX}/offline`, offlineRoutes);
+
 
 // ─── Error Handling ─────────────────────────────────────────────────────────
 app.use(notFound);
