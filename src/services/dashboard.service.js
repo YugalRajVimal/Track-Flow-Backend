@@ -27,23 +27,22 @@ function buildDateRange(startDate, endDate) {
  * @param {string} [params.channelPartnerId]
  * @param {string} [params.brandId]
  */
+const OfflineRecord = require('../models/OfflineRecords');
+
 const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId } = {}) => {
+  // Include all date/brand/channelPartner logic from above, but add offline record count
   const createdAt = buildDateRange(startDate, endDate);
 
-  // General filters (for status !== missing) use createdAt, channelPartnerId, brandId
+  // --- Original filters, for AWB/Return ---
   const filters = { createdAt };
   if (channelPartnerId) filters.channelPartner = channelPartnerId;
   if (brandId) filters.brand = brandId;
 
-  // For aggregation (same as above)
-  const aggMatch = { ...filters };
-
-  // For "total scans", exclude AWBRecords that have status: 'missing'
+  // --- AWB 'scans' only: status != missing
   const scansFilters = { ...filters, status: { $ne: 'missing' } };
 
-  // Filters for missing status: instead of createdAt, use missingFromDate/missingToDate for date
+  // For missing status: (date filter on missingFrom/toDate)
   const buildMissingRange = (startDate, endDate) => {
-    // Both dates required, otherwise skip filtering
     if (startDate && endDate) {
       const start = new Date(startDate); start.setHours(0,0,0,0);
       const end = new Date(endDate); end.setHours(23,59,59,999);
@@ -54,12 +53,11 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
   };
   const missingDateRange = buildMissingRange(startDate, endDate);
 
-  // Build filters for missing AWBs and Returns: date filter applies to missingFromDate/missingToDate
+  // AWB/Return "missing" filters
   const awbMissingFilters = {};
   if (channelPartnerId) awbMissingFilters.channelPartner = channelPartnerId;
   if (brandId) awbMissingFilters.brand = brandId;
   awbMissingFilters.status = 'missing';
-  // filter: (missingFromDate <= endDate) and (missingToDate >= startDate)
   if (missingDateRange) {
     awbMissingFilters.missingFromDate = { $lte: missingDateRange.$lte };
     awbMissingFilters.missingToDate = { $gte: missingDateRange.$gte };
@@ -74,6 +72,10 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
     returnMissingFilters.missingToDate = { $gte: missingDateRange.$gte };
   }
 
+  // --- OfflineRecord FILTERS ---
+  // Our offline record schema does not contain brand/channelPartner, only createdAt
+  const offlineRecordFilters = { createdAt };
+
   const [
     totalScansToday,
     totalDispatched,
@@ -86,21 +88,21 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
     awbMissingRecordsCount,
     returnMissingRecordsCount,
     returnAnalytics,
+    totalOfflineRecords, // <-- count result
   ] = await Promise.all([
 
-    // Total scans in selected range (with channel/brand if supplied) -
-    // excludes 'missing' status
+    // Total scans (AWB, >= 0, status != missing)
     AWBRecord.countDocuments(scansFilters),
 
-    // Total dispatched (createdAt-based)
+    // Total dispatched
     AWBRecord.countDocuments({ ...filters, status: 'dispatched' }),
 
-    // Total cancelled (createdAt-based)
+    // Total cancelled
     AWBRecord.countDocuments({ ...filters, status: 'cancelled' }),
 
-    // Brand analytics (createdAt-based)
+    // Brand analytics
     AWBRecord.aggregate([
-      { $match: aggMatch },
+      { $match: filters },
       {
         $group: {
           _id: '$brand',
@@ -144,9 +146,9 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
       { $limit: 10 },
     ]),
 
-    // Channel partner analytics (createdAt-based)
+    // ChannelPartner analytics
     AWBRecord.aggregate([
-      { $match: aggMatch },
+      { $match: filters },
       {
         $group: {
           _id: '$channelPartner',
@@ -190,9 +192,9 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
       { $limit: 10 },
     ]),
 
-    // Scan activity graph — daily buckets (createdAt-based)
+    // Scan activity graph: group by createdAt day (status != missing)
     AWBRecord.aggregate([
-      { $match: aggMatch },
+      { $match: filters },
       {
         $group: {
           _id: {
@@ -227,25 +229,25 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
       },
     ]),
 
-    // Recent activities (AuditLogs) — filter only by createdAt
+    // Recent activities (AuditLogs)
     AuditLog.find({ createdAt })
       .populate('user', 'name email role')
       .sort({ createdAt: -1 })
       .limit(10)
       .lean(),
 
-    // Return records count (createdAt, not missing) 
+    // Return records count
     ReturnRecord.countDocuments(filters),
 
-    // AWB missing records count (date on missingFrom/ToRange)
+    // AWB missing count
     AWBRecord.countDocuments(awbMissingFilters),
 
-    // Return missing records count (date on missingFrom/ToRange)
+    // Return missing count
     ReturnRecord.countDocuments(returnMissingFilters),
 
-    // Return analytics by channelPartner, same structure as channelPartnerAnalytics above
+    // Return analytics by channelPartner
     ReturnRecord.aggregate([
-      { $match: aggMatch },
+      { $match: filters },
       {
         $group: {
           _id: '$channelPartner',
@@ -278,10 +280,13 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
       { $sort: { totalReturns: -1 } },
       { $limit: 10 },
     ]),
+
+    // --- ADDED: OfflineRecord count (for given date range) ---
+    OfflineRecord.countDocuments(offlineRecordFilters)
   ]);
 
   return {
-    totalScansToday,      // key name kept for frontend compatibility
+    totalScansToday,
     totalDispatched,
     totalCancelled,
     brandAnalytics,
@@ -291,7 +296,8 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
     totalReturnRecords,
     awbMissingRecordsCount,
     returnMissingRecordsCount,
-    returnAnalytics, // new field
+    returnAnalytics,
+    totalOfflineRecords, // <-- include in returned stats
   };
 };
 
