@@ -2,50 +2,77 @@ const OfflineRecord = require('../models/OfflineRecords');
 const { buildPagination, getTodayRange } = require('../utils/response');
 
 /**
- * Create a new OfflineRecord
- * Defensive: transform field names, ensure types
+ * Normalize and defensively map OfflineRecord payload for both add & edit
+ * Handles: casing, field aliasing, string=>number, trimming, etc.
  */
-const addOfflineRecord = async (recordData) => {
-  // Defensive: Allow backend to handle potential frontend inconsistencies in naming/casing/types
+function normalizeOfflineRecordPayload(data) {
+  const incoming = { ...data };
 
-  // Handle both 'challanNo' and 'challanNumber' from the payload (as seen in logs)
-  let incoming = { ...recordData };
-
-  // Support frontend sending 'challanNumber' (should be 'challanNo' in schema)
+  // Alias 'challanNumber' -> 'challanNo'
   if (incoming.challanNumber && !incoming.challanNo) {
     incoming.challanNo = incoming.challanNumber;
     delete incoming.challanNumber;
   }
 
-  // If qty or totalQty are strings, convert to numbers
-  if (typeof incoming.qty === 'string') {
-    incoming.qty = parseInt(incoming.qty, 10);
-    if (isNaN(incoming.qty)) incoming.qty = undefined;
-  }
-  if (typeof incoming.totalQty === 'string') {
-    incoming.totalQty = parseInt(incoming.totalQty, 10);
-    if (isNaN(incoming.totalQty)) incoming.totalQty = undefined;
-  }
-
-  // Defensively uppercase payment (should be CASH/DUE/UPI in schema)
+  // Defensive for string payment
   if (typeof incoming.payment === 'string') {
     incoming.payment = incoming.payment.trim().toUpperCase();
   }
 
-  // Defensive for partyName & styleType: trim
+  // Defensive for partyName, challanNo, salesman, remark
   if (typeof incoming.partyName === 'string') incoming.partyName = incoming.partyName.trim();
-  if (typeof incoming.styleType === 'string') incoming.styleType = incoming.styleType.trim();
-
-  // Defensive for remark: trim if string
+  if (typeof incoming.challanNo === 'string') incoming.challanNo = incoming.challanNo.trim();
+  if (typeof incoming.salesman === 'string') incoming.salesman = incoming.salesman.trim();
   if (typeof incoming.remark === 'string') incoming.remark = incoming.remark.trim();
 
-  const record = await OfflineRecord.create(incoming);
+  // Defensive for totalQty, totalAmount fields (should be numbers)
+  if (typeof incoming.totalQty === 'string') {
+    incoming.totalQty = parseInt(incoming.totalQty, 10);
+    if (isNaN(incoming.totalQty)) incoming.totalQty = undefined;
+  }
+  if (typeof incoming.totalAmount === 'string') {
+    incoming.totalAmount = parseFloat(incoming.totalAmount);
+    if (isNaN(incoming.totalAmount)) incoming.totalAmount = undefined;
+  }
+
+  // Normalize styleTypes: expect either .styleTypes (array) or .styleType/.qty from legacy clients
+  if (Array.isArray(incoming.styleTypes)) {
+    // Defensive: map all styleTypes to {type, qty}, trim/parse fields as necessary
+    incoming.styleTypes = incoming.styleTypes.map((st) => {
+      let type = typeof st.type === 'string' ? st.type.trim() : '';
+      let qty = st.qty;
+      if (typeof qty === 'string') {
+        qty = parseInt(qty, 10);
+        if (isNaN(qty)) qty = undefined;
+      }
+      return { type, qty };
+    }).filter(x => x.type && x.qty);
+  } else if (typeof incoming.styleType === 'string' && incoming.qty) {
+    // Fallback support: single item - migrate to styleTypes
+    let qty = incoming.qty;
+    if (typeof qty === 'string') {
+      qty = parseInt(qty, 10);
+      if (isNaN(qty)) qty = undefined;
+    }
+    incoming.styleTypes = [{ type: incoming.styleType.trim(), qty }];
+    delete incoming.styleType;
+    delete incoming.qty;
+  }
+
+  return incoming;
+}
+
+/**
+ * Create a new OfflineRecord
+ */
+const addOfflineRecord = async (recordData) => {
+  const normalized = normalizeOfflineRecordPayload(recordData);
+  const record = await OfflineRecord.create(normalized);
   return record;
 };
 
 /**
  * Edit/Update an existing OfflineRecord
- * Performs same defensive field mapping/type handling as add
  */
 const editOfflineRecord = async (id, updates) => {
   const record = await OfflineRecord.findById(id);
@@ -55,31 +82,18 @@ const editOfflineRecord = async (id, updates) => {
     throw err;
   }
 
-  // Support frontend sending 'challanNumber' as update field
-  if (updates.challanNumber && !updates.challanNo) {
-    updates.challanNo = updates.challanNumber;
-    delete updates.challanNumber;
+  const normalized = normalizeOfflineRecordPayload(updates);
+
+  // Only copy valid fields from normalized - prevent overwriting existing fields not provided in update
+  for (const field of [
+    'partyName', 'challanNo', 'salesman', 'styleTypes',
+    'totalQty', 'totalAmount', 'payment', 'remark'
+  ]) {
+    if (typeof normalized[field] !== 'undefined') {
+      record[field] = normalized[field];
+    }
   }
 
-  if (typeof updates.qty === 'string') {
-    updates.qty = parseInt(updates.qty, 10);
-    if (isNaN(updates.qty)) updates.qty = undefined;
-  }
-
-  if (typeof updates.totalQty === 'string') {
-    updates.totalQty = parseInt(updates.totalQty, 10);
-    if (isNaN(updates.totalQty)) updates.totalQty = undefined;
-  }
-
-  if (typeof updates.payment === 'string') {
-    updates.payment = updates.payment.trim().toUpperCase();
-  }
-
-  if (typeof updates.partyName === 'string') updates.partyName = updates.partyName.trim();
-  if (typeof updates.styleType === 'string') updates.styleType = updates.styleType.trim();
-  if (typeof updates.remark === 'string') updates.remark = updates.remark.trim();
-
-  Object.assign(record, updates);
   await record.save();
   return record;
 };
@@ -116,9 +130,11 @@ const fetchOfflineRecords = async ({
 
   const filter = {};
 
+  // Search on partyName
   if (search && typeof search === 'string' && search.trim().length > 0) {
     filter.partyName = { $regex: search.trim(), $options: 'i' };
   }
+  // Filter by payment
   if (payment && typeof payment === 'string' && payment.trim().length > 0) {
     filter.payment = payment.trim().toUpperCase();
   }
@@ -143,6 +159,11 @@ const fetchOfflineRecords = async ({
   const sortDir = sortOrder === 'asc' ? 1 : -1;
   const sort = { [sortBy]: sortDir };
 
+  // Console log checks for debugging
+  console.log('[fetchOfflineRecords] filter:', JSON.stringify(filter, null, 2));
+  console.log('[fetchOfflineRecords] sort:', sort);
+  console.log('[fetchOfflineRecords] page:', page, 'limit:', limit, 'skip:', skip);
+
   // Fetch
   const [records, total] = await Promise.all([
     OfflineRecord.find(filter)
@@ -151,6 +172,8 @@ const fetchOfflineRecords = async ({
       .limit(parseInt(limit)),
     OfflineRecord.countDocuments(filter),
   ]);
+
+  console.log(records);
 
   return {
     records,
@@ -186,8 +209,10 @@ const fetchOfflineRecordsForExport = async (filters = {}) => {
 
   const filter = {};
 
-  if (search) filter.partyName = { $regex: search, $options: 'i' };
-  if (payment) filter.payment = payment.trim().toUpperCase();
+  if (search && typeof search === 'string' && search.length > 0)
+    filter.partyName = { $regex: search, $options: 'i' };
+  if (payment && typeof payment === 'string' && payment.length > 0)
+    filter.payment = payment.trim().toUpperCase();
 
   if (startDate || endDate) {
     filter.createdAt = {};
