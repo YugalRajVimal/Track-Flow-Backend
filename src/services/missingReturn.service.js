@@ -322,7 +322,7 @@ const previewMissing = async ({
     brand: brandId,
     scannedAt: { $gte: start, $lte: end },
     awbId: { $in: fileAwbIds },
-    status: 'dispatched', // <--- Only consider dispatched records as "existing in DB"
+    // status: '-', // <--- Only consider dispatched records as "existing in DB"
   };
 
   const existingRecords = await ReturnRecord.find(dbQuery).select('awbId').lean();

@@ -64,15 +64,48 @@ function normalizeOfflineRecordPayload(data) {
 
 /**
  * Create a new OfflineRecord
+ * Also adds partyName to OfflineDropdown.partyNames if not already present.
  */
 const addOfflineRecord = async (recordData) => {
   const normalized = normalizeOfflineRecordPayload(recordData);
+
+  // Check for unique challanNo
+  const existing = await OfflineRecord.findOne({ challanNo: normalized.challanNo });
+  if (existing) {
+    const err = new Error('Challan number must be unique');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Add partyName to OfflineDropdown.partyNames if not already present
+  if (normalized.partyName && typeof normalized.partyName === 'string') {
+    const OfflineDropdown = require('../models/OfflineData');
+    let dropdown = await OfflineDropdown.findOne();
+    if (!dropdown) {
+      dropdown = new OfflineDropdown({
+        styleTypes: [],
+        salesMen: [],
+        partyNames: [{ name: normalized.partyName }]
+      });
+      await dropdown.save();
+    } else {
+      const exists = dropdown.partyNames.some(
+        (p) => typeof p.name === 'string' && p.name.trim().toLowerCase() === normalized.partyName.trim().toLowerCase()
+      );
+      if (!exists) {
+        dropdown.partyNames.push({ name: normalized.partyName });
+        await dropdown.save();
+      }
+    }
+  }
+
   const record = await OfflineRecord.create(normalized);
   return record;
 };
 
 /**
  * Edit/Update an existing OfflineRecord
+ * Also adds new partyName to OfflineDropdown.partyNames if it is changed and doesn't exist.
  */
 const editOfflineRecord = async (id, updates) => {
   const record = await OfflineRecord.findById(id);
@@ -83,6 +116,45 @@ const editOfflineRecord = async (id, updates) => {
   }
 
   const normalized = normalizeOfflineRecordPayload(updates);
+
+  // If challanNo is being changed, enforce uniqueness
+  if (
+    typeof normalized.challanNo !== 'undefined' &&
+    normalized.challanNo !== record.challanNo
+  ) {
+    const existing = await OfflineRecord.findOne({ challanNo: normalized.challanNo });
+    if (existing) {
+      const err = new Error('Challan number must be unique');
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  // If updating partyName, check and add to OfflineDropdown if needed
+  if (
+    typeof normalized.partyName !== 'undefined' &&
+    normalized.partyName &&
+    normalized.partyName !== record.partyName
+  ) {
+    const OfflineDropdown = require('../models/OfflineData');
+    let dropdown = await OfflineDropdown.findOne();
+    if (!dropdown) {
+      dropdown = new OfflineDropdown({
+        styleTypes: [],
+        salesMen: [],
+        partyNames: [{ name: normalized.partyName }]
+      });
+      await dropdown.save();
+    } else {
+      const exists = dropdown.partyNames.some(
+        (p) => typeof p.name === 'string' && p.name.trim().toLowerCase() === normalized.partyName.trim().toLowerCase()
+      );
+      if (!exists) {
+        dropdown.partyNames.push({ name: normalized.partyName });
+        await dropdown.save();
+      }
+    }
+  }
 
   // Only copy valid fields from normalized - prevent overwriting existing fields not provided in update
   for (const field of [
@@ -124,27 +196,38 @@ const fetchOfflineRecords = async ({
   startDate = '',
   endDate = '',
   sortBy = 'createdAt',
-  sortOrder = 'desc'
+  sortOrder = 'desc',
+  partyName = '' // add partyName filter support (to align with OfflineManagement.jsx & UI filters)
 } = {}) => {
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
   const filter = {};
 
-  // Search on partyName OR salesman
-  if (search && typeof search === 'string' && search.trim().length > 0) {
+  // partyName filter: if provided, filter ONLY by partyName (partial/regex match for UI experience)
+  if (partyName && typeof partyName === 'string' && partyName.trim().length > 0) {
+    filter.partyName = { $regex: partyName.trim(), $options: 'i' };
+  }
+
+  // Search on partyName OR salesman, but NOT if partyName filter is specifically set
+  if (
+    search &&
+    typeof search === 'string' &&
+    search.trim().length > 0 &&
+    !filter.partyName // avoid clash with partyName-specific filter
+  ) {
     const searchRegex = { $regex: search.trim(), $options: 'i' };
     filter.$or = [
       { partyName: searchRegex },
-      { salesman: searchRegex }
+      { salesman: searchRegex },
     ];
   }
 
-  // Filter by payment
+  // payment filter (CASH/DUE/UPI)
   if (payment && typeof payment === 'string' && payment.trim().length > 0) {
     filter.payment = payment.trim().toUpperCase();
   }
 
-  // Handle date filtering
+  // Date filtering (createdAt)
   let start, end;
   if (startDate || endDate) {
     start = startDate ? new Date(startDate) : undefined;
@@ -155,21 +238,21 @@ const fetchOfflineRecords = async ({
     if (end) filter.createdAt.$lte = end;
     if (!Object.keys(filter.createdAt).length) delete filter.createdAt;
   } else {
-    // Default to today
+    // If no date filter, default to today
     const today = getTodayRange();
     filter.createdAt = { $gte: today.start, $lte: today.end };
   }
 
-  // Build sort
+  // Sorting
   const sortDir = sortOrder === 'asc' ? 1 : -1;
   const sort = { [sortBy]: sortDir };
 
-  // Console log checks for debugging
+  // For debugging
   console.log('[fetchOfflineRecords] filter:', JSON.stringify(filter, null, 2));
   console.log('[fetchOfflineRecords] sort:', sort);
   console.log('[fetchOfflineRecords] page:', page, 'limit:', limit, 'skip:', skip);
 
-  // Fetch
+  // Query
   const [records, total] = await Promise.all([
     OfflineRecord.find(filter)
       .sort(sort)
@@ -177,8 +260,6 @@ const fetchOfflineRecords = async ({
       .limit(parseInt(limit)),
     OfflineRecord.countDocuments(filter),
   ]);
-
-  console.log(records);
 
   return {
     records,

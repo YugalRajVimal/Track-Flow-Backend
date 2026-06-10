@@ -54,6 +54,7 @@ const fetchOfflineRecords = async (req, res) => {
       endDate = '',
       sortBy = 'createdAt',
       sortOrder = 'desc',
+      partyName='',
     } = req.query;
 
     const { records, pagination } = await offlineService.fetchOfflineRecords({
@@ -65,6 +66,7 @@ const fetchOfflineRecords = async (req, res) => {
       endDate,
       sortBy,
       sortOrder,
+      partyName
     });
 
     return sendSuccess(res, 200, 'Offline records fetched successfully', records, pagination);

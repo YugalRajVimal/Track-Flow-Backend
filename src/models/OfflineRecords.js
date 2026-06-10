@@ -42,6 +42,7 @@ const offlineRecordSchema = new mongoose.Schema(
       required: [true, 'Challan number is required'],
       trim: true,
       maxlength: [40, 'Challan number cannot exceed 40 characters'],
+      unique: true,
     },
     salesman: {
       type: String,
@@ -64,7 +65,6 @@ const offlineRecordSchema = new mongoose.Schema(
     },
     totalAmount: {
       type: Number,
-      required: [true, 'Total amount is required'],
       min: [0, 'Total amount cannot be negative'],
     },
     payment: {

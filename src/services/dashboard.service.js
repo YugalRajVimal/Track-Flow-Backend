@@ -30,7 +30,7 @@ function buildDateRange(startDate, endDate) {
 const OfflineRecord = require('../models/OfflineRecords');
 
 const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId } = {}) => {
-  // Include all date/brand/channelPartner logic from above, but add offline record count
+  // Include all date/brand/channelPartner logic from above, but add offline record count & analytics
   const createdAt = buildDateRange(startDate, endDate);
 
   // --- Original filters, for AWB/Return ---
@@ -89,6 +89,7 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
     returnMissingRecordsCount,
     returnAnalytics,
     totalOfflineRecords, // <-- count result
+    offlineAnalytics // <-- ADDED: analytics for offline records
   ] = await Promise.all([
 
     // Total scans (AWB, >= 0, status != missing)
@@ -105,7 +106,7 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
       { $match: filters },
       {
         $group: {
-          _id: '$brand',
+          _id: { brand: '$brand', channelPartner: '$channelPartner' },
           totalScans: {
             $sum: {
               $cond: [
@@ -126,17 +127,39 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
       {
         $lookup: {
           from: 'brands',
-          localField: '_id',
+          localField: '_id.brand',
           foreignField: '_id',
           as: 'brand',
         },
       },
       { $unwind: { path: '$brand', preserveNullAndEmptyArrays: true } },
       {
+        $lookup: {
+          from: 'channelpartners',
+          localField: '_id.channelPartner',
+          foreignField: '_id',
+          as: 'channelPartner',
+        }
+      },
+      { $unwind: { path: '$channelPartner', preserveNullAndEmptyArrays: true } },
+      {
         $project: {
-          brandId: '$_id',
-          brandName: '$brand.name',
+          brandId: '$_id.brand',
           brandCode: '$brand.code',
+          partnerId: '$_id.channelPartner',
+          brandName: {
+            $cond: [
+              { $and: [ { $ifNull: ['$brand.name', false] }, { $ifNull: ['$channelPartner.name', false] } ] },
+              { $concat: ['$brand.name', ' (', '$channelPartner.name', ')'] },
+              {
+                $cond: [
+                  { $ifNull: ['$brand.name', false] },
+                  '$brand.name',
+                  null
+                ]
+              }
+            ]
+          },
           totalScans: 1,
           dispatched: 1,
           cancelled: 1,
@@ -282,7 +305,37 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
     ]),
 
     // --- ADDED: OfflineRecord count (for given date range) ---
-    OfflineRecord.countDocuments(offlineRecordFilters)
+    OfflineRecord.countDocuments(offlineRecordFilters),
+
+    // --- ADDED: OfflineRecord analytics (group by salesman, partyName, payment) ---
+    OfflineRecord.aggregate([
+      { $match: offlineRecordFilters },
+      {
+        $group: {
+          _id: {
+            salesman: '$salesman',
+            partyName: '$partyName',
+            payment: '$payment'
+          },
+          totalQty: { $sum: '$totalQty' },
+          totalRecords: { $sum: 1 },
+          totalAmount: { $sum: { $ifNull: ['$totalAmount', 0] } }
+        }
+      },
+      {
+        $project: {
+          salesman: '$_id.salesman',
+          partyName: '$_id.partyName',
+          payment: '$_id.payment',
+          totalQty: 1,
+          totalRecords: 1,
+          totalAmount: 1,
+          _id: 0
+        }
+      },
+      { $sort: { totalQty: -1 } },
+      { $limit: 20 }
+    ])
   ]);
 
   return {
@@ -298,6 +351,7 @@ const getDashboardStats = async ({ startDate, endDate, channelPartnerId, brandId
     returnMissingRecordsCount,
     returnAnalytics,
     totalOfflineRecords, // <-- include in returned stats
+    offlineAnalytics // <-- include in returned stats
   };
 };
 

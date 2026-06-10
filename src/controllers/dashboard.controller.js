@@ -3,15 +3,28 @@ const { sendSuccess } = require('../utils/response');
 
 const getStats = async (req, res, next) => {
   try {
-    // Accept optional filters for channelPartnerId and brandId in addition to dates
-    const { startDate, endDate, channelPartnerId, brandId } = req.query;
+    // Collect filters from query parameters, supporting all dashboard fields
+    const {
+      startDate,
+      endDate,
+      channelPartnerId,
+      brandId
+    } = req.query;
+
+    // Call the service function with provided filters
     const stats = await dashboardService.getDashboardStats({
       startDate,
       endDate,
       channelPartnerId,
-      brandId,
+      brandId
     });
-    return sendSuccess(res, 200, 'Dashboard stats fetched successfully', stats);
+
+    // Return stats in unified success response
+    sendSuccess(res, 200, 'Dashboard stats fetched successfully', {
+      ...stats,
+      // Optionally add a flag or timestamp if useful for consumers
+      fetchedAt: new Date().toISOString()
+    });
   } catch (error) {
     next(error);
   }
