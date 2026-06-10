@@ -181,12 +181,25 @@ function extractMyntra(row) {
   return { awbId, missingAt };
 }
 
-function extractWebsite(row) {
-  const awbId = String(row['AWB NO.'] || '').trim().toUpperCase();
-  if (!awbId) return null;
-  const missingAt = parseDMY(row['Dispatch by date']);
-  // Website files don't always contain Brand
-  return { awbId, missingAt };
+/**
+ * For Website files:
+ * - In CSV files, only include rows where "Order Status" is "DELIVERED" or "IN-TRANSIT"
+ * - In Excel files, do not filter by "Order Status"
+ */
+function extractWebsiteFactory(isCSV) {
+  // Function returned will be used as the extractor for website files
+  return function extractWebsite(row) {
+    const awbId = String(row['AWB NO.'] || '').trim().toUpperCase();
+    if (!awbId) return null;
+    // CSV only: apply "Order Status" filter
+    if (isCSV) {
+      const status = String(row['Order Status'] || '').trim().toUpperCase();
+      if (status !== 'DELIVERED' && status !== 'IN-TRANSIT') return null;
+    }
+    const missingAt = parseDMY(row['Dispatch by date']);
+    // Website files don't always contain Brand
+    return { awbId, missingAt };
+  };
 }
 
 /**
@@ -194,11 +207,12 @@ function extractWebsite(row) {
  * If a brand column is present for a partner, this is where you would extract it.
  */
 
-const EXTRACTORS = {
+// Will be populated correctly in previewMissing below (for website extractor)
+let EXTRACTORS = {
   flipkart: extractFlipkart,
   meesho:   extractMeesho,
   myntra:   extractMyntra,
-  website:  extractWebsite,
+  // website:  extractWebsite, <-- replaced dynamically below
 };
 
 // ---------------------------------------------------------------------------
@@ -254,7 +268,17 @@ const previewMissing = async ({
     throw err;
   }
 
-  const extract = EXTRACTORS[partner];
+  // For Website files: Use correct extractor logic based on file format
+  let extract;
+  if (partner === 'website') {
+    // Only CSV (.csv) should filter by "Order Status"
+    const isCSV = originalname.toLowerCase().endsWith('.csv');
+    extract = extractWebsiteFactory(isCSV);
+    // Merge into EXTRACTORS for compatibility if needed later
+    EXTRACTORS = { ...EXTRACTORS, website: extract };
+  } else {
+    extract = EXTRACTORS[partner];
+  }
 
   // 3. Extract AWB IDs from file
   const fileItems = [];
@@ -407,66 +431,4 @@ const saveMissing = async (rows, userId, missingFrom, missingTo) => {
   return { saved, skipped };
 };
 
-
-// const saveMissing = async (rows, userId, missingFrom, missingTo) => {
-//   if (!Array.isArray(rows) || rows.length === 0) {
-//     const err = new Error('No rows to save.');
-//     err.statusCode = 400;
-//     throw err;
-//   }
-//   // Require brand in all rows
-//   const missingBrandCount = rows.filter(r => !r.brand).length;
-//   if (missingBrandCount > 0) {
-//     const err = new Error('Brand is required for all rows.');
-//     err.statusCode = 400;
-//     throw err;
-//   }
-
-//   // Validate missingFrom and missingTo
-//   if (!missingFrom || !missingTo) {
-//     const err = new Error('missingFrom and missingTo dates are required.');
-//     err.statusCode = 400;
-//     throw err;
-//   }
-
-//   // Parse and normalize missingFromDate and missingToDate to full Date range
-//   const fromDate = new Date(missingFrom);
-//   fromDate.setHours(0,0,0,0);
-//   const toDate = new Date(missingTo);
-//   toDate.setHours(23,59,59,999);
-
-//   const docs = rows.map((row) => ({
-//     awbId:          (row.awbId || '').toUpperCase(),
-//     channelPartner: row.channelPartner,
-//     brand:          row.brand,
-//     status:         'missing',
-//     scannedAt:      row.missingAt || new Date(),   // For historical, retains preview's missingAt
-//     missingAt:      row.missingAt || new Date(),   // Should be the preview's missingAt per row
-//     missingFromDate: fromDate,                     // New: explicit missing range start
-//     missingToDate:   toDate,                       // New: explicit missing range end
-//     missingBy:      userId,
-//     createdBy:      userId,
-//   }));
-
-//   let saved   = 0;
-//   let skipped = 0;
-
-//   try {
-//     const result = await AWBRecord.insertMany(docs, {
-//       ordered: false,
-//       rawResult: true,
-//     });
-//     saved = result.insertedCount ?? docs.length;
-//   } catch (bulkErr) {
-//     // ordered:false throws a BulkWriteError even on partial success
-//     if (bulkErr.name === 'MongoBulkWriteError' || bulkErr.code === 11000) {
-//       saved   = bulkErr.result?.nInserted ?? 0;
-//       skipped = docs.length - saved;
-//     } else {
-//       throw bulkErr;
-//     }
-//   }
-
-//   return { saved, skipped };
-// };
 module.exports = { previewMissing, saveMissing };

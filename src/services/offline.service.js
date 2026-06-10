@@ -130,10 +130,15 @@ const fetchOfflineRecords = async ({
 
   const filter = {};
 
-  // Search on partyName
+  // Search on partyName OR salesman
   if (search && typeof search === 'string' && search.trim().length > 0) {
-    filter.partyName = { $regex: search.trim(), $options: 'i' };
+    const searchRegex = { $regex: search.trim(), $options: 'i' };
+    filter.$or = [
+      { partyName: searchRegex },
+      { salesman: searchRegex }
+    ];
   }
+
   // Filter by payment
   if (payment && typeof payment === 'string' && payment.trim().length > 0) {
     filter.payment = payment.trim().toUpperCase();
