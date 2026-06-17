@@ -13,7 +13,7 @@ const createUserValidator = [
     .matches(/^\d{5}$/).withMessage('Passcode must be exactly 5 digits'),
   body('role')
     .optional()
-    .isIn(['admin', 'user']).withMessage('Role must be admin or user'),
+    .isIn(['admin', 'user', 'handler']).withMessage('Role must be admin, user, or handler'),
 ];
 
 const updateUserValidator = [
@@ -29,7 +29,7 @@ const updateUserValidator = [
     .matches(/^\d{5}$/).withMessage('Passcode must be exactly 5 digits'),
   body('role')
     .optional()
-    .isIn(['admin', 'user']).withMessage('Role must be admin or user'),
+    .isIn(['admin', 'user', 'handler']).withMessage('Role must be admin, user, or handler'),
 ];
 
 module.exports = { createUserValidator, updateUserValidator };

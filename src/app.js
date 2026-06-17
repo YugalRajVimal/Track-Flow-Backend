@@ -18,6 +18,10 @@ const auditLogRoutes = require('./routes/auditLog.routes');
 const exportRoutes = require('./routes/export.routes');
 const offlineRoutes = require('./routes/offline.routes');
 const offlineDataRoutes = require('./routes/offlineData.routes');
+const taskDataRoutes = require('./routes/taskData.routes');
+const taskRoutes = require('./routes/task.routes');
+
+
 
 
 
@@ -95,6 +99,10 @@ app.use(`${API_PREFIX}/audit-logs`, auditLogRoutes);
 app.use(`${API_PREFIX}/export`, exportRoutes);
 app.use(`${API_PREFIX}/offline`, offlineRoutes);
 app.use(`${API_PREFIX}/offline-data`, offlineDataRoutes);
+app.use(`${API_PREFIX}/task-data`, taskDataRoutes);
+app.use(`${API_PREFIX}/tasks`, taskRoutes);
+
+
 
 
 
