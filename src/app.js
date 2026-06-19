@@ -3,6 +3,8 @@ const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
+
 
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 
@@ -86,6 +88,9 @@ app.get('/health', (req, res) => {
 
 // ─── API Routes ─────────────────────────────────────────────────────────────
 const API_PREFIX = '/api/v1';
+// Serve files in /uploads folder statically at /uploads
+
+app.use(`${API_PREFIX}/uploads`, express.static(path.join(__dirname, 'uploads')));
 
 app.use(`${API_PREFIX}/auth`, authRoutes);
 app.use(`${API_PREFIX}/users`, userRoutes);

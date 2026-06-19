@@ -1,4 +1,6 @@
 const taskService = require('../services/task.service');
+const fs = require('fs');
+const path = require('path');
 
 
 /**
@@ -20,28 +22,75 @@ async function fetchTaskDataSchemaFieldsController(req, res) {
  * Expects req.body to have:
  *  - groupData: { challanNo, partyName, transportName, receiverName, remark, challanPhotoPath }
  *  - taskDetails: array of objects [{ FabricType, Length, BuiltyNo, MTR, sinkage, mtrAfterSinkage, totalRolls, taskStatus }]
+ * If a file was uploaded via multer (handled by uploadImage), saves its path to groupData.challanPhotoPath.
+ * If error, deletes uploaded file.
  */
+
+
 async function createTasksController(req, res) {
+  let fileToDelete = null;
   try {
-    const { groupData, taskDetails } = req.body;
+    let { groupData, taskDetails } = req.body;
+
+    // req.body fields may be strings if form-data, parse if needed
+    if (typeof groupData === 'string') groupData = JSON.parse(groupData);
+    if (typeof taskDetails === 'string') taskDetails = JSON.parse(taskDetails);
+
+    // If a file is uploaded (e.g., a challan image), save its path
+    if (req.file) {
+      let fileName = req.file.filename;
+      if (!fileName && req.file.originalname) {
+        fileName = req.file.originalname.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '');
+      }
+      if (fileName) {
+        groupData.challanPhotoPath = `/uploads/${fileName}`;
+        fileToDelete = path.join(__dirname, '..', 'uploads', fileName);
+      }
+    }
+
     const createdTasks = await taskService.createTasks(groupData, taskDetails);
     res.status(201).json({ success: true, data: createdTasks });
   } catch (error) {
+    // Delete uploaded file if present and error occurs
+    if (fileToDelete && fs.existsSync(fileToDelete)) {
+      try { fs.unlinkSync(fileToDelete); } catch {/* ignore */}
+    }
     res.status(400).json({ success: false, message: error.message });
   }
 }
 
 /**
  * Controller to edit/update a task by taskId.
- * Expects req.params.taskId and req.body with updateData
+ * Expects req.params.taskId and req.body with updateData. If file uploaded, save file path to updateData.
+ * If error, deletes uploaded file.
  */
 async function editTaskController(req, res) {
+  let fileToDelete = null;
   try {
     const { taskId } = req.params;
-    const updateData = req.body;
+    let updateData = req.body;
+
+    // If sent as form-data, parse updateData if it's a string (for file uploads)
+    if (typeof updateData === 'string') updateData = JSON.parse(updateData);
+
+    if (req.file) {
+      let fileName = req.file.filename;
+      if (!fileName && req.file.originalname) {
+        fileName = req.file.originalname.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '');
+      }
+      if (fileName) {
+        updateData.challanPhotoPath = `/uploads/${fileName}`;
+        fileToDelete = path.join(__dirname, '..', 'uploads', fileName);
+      }
+    }
+
     const updatedTask = await taskService.editTask(taskId, updateData);
     res.json({ success: true, data: updatedTask });
   } catch (error) {
+    // Delete uploaded file if present and error occurs
+    if (fileToDelete && fs.existsSync(fileToDelete)) {
+      try { fs.unlinkSync(fileToDelete); } catch {/* ignore */}
+    }
     res.status(400).json({ success: false, message: error.message });
   }
 }
@@ -169,44 +218,97 @@ async function deleteSubTaskController(req, res) {
 
 /**
  * Controller to add (create/upsert) submission for a subTask within a TaskRecord.
- * Expects req.params.taskId, req.params.subTaskId, and req.body with submissionData.
+ * Handles uploaded image file via req.file if available, and saves its path.
+ * Expects req.params.taskId, req.params.subTaskId, req.body with submissionData, and optionally req.file.
+ * If an error occurs and a file was uploaded, deletes the uploaded file.
  */
+
 async function addSubmissionToSubTaskController(req, res) {
+  let fileName = null;
+  let fileToDelete = null;
+
   try {
     const { taskId, subTaskId } = req.params;
     const submissionData = req.body;
-    const savedSubmission = await taskService.addSubmissionToSubTask(taskId, subTaskId, submissionData);
+    let imageFile = null;
+
+    // Handle uploaded file: sanitize filename, store path
+    if (req.file) {
+      fileName = req.file.filename;
+      if (!fileName && req.file.originalname) {
+        // Sanitize the original name if multer didn't already
+        fileName = req.file.originalname.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '');
+      }
+      if (fileName) {
+        // Attach relative path info (so service layer can use it)
+        submissionData.photoPath = `/uploads/${fileName}`;
+        fileToDelete = path.join(__dirname, '..', 'uploads', fileName);
+      }
+      imageFile = req.file;
+    }
+
+    const savedSubmission = await taskService.addSubmissionToSubTask(
+      taskId,
+      subTaskId,
+      submissionData,
+      imageFile
+    );
     res.json({ success: true, data: savedSubmission });
   } catch (error) {
+    // If upload happened but error thrown, delete the uploaded file
+    if (fileToDelete) {
+      fs.unlink(fileToDelete, err => {
+        if (err) {
+          console.error('Failed to delete uploaded file after error:', fileToDelete, err);
+        }
+      });
+    }
     res.status(400).json({ success: false, message: error.message });
   }
 }
 
 /**
  * Controller to edit/update submission for a subTask within a TaskRecord.
- * Expects req.params.taskId, req.params.subTaskId, and req.body with updated submissionData.
+ * Handles uploaded image file via req.file if available, and saves its path.
+ * Expects req.params.taskId, req.params.subTaskId, req.body with updated submissionData, and optionally req.file.
+ * If an error occurs and a file was uploaded, deletes the uploaded file.
  */
 async function editSubmissionOfSubTaskController(req, res) {
+  let fileName = null;
+  let fileToDelete = null;
+
   try {
     const { taskId, subTaskId } = req.params;
     const submissionData = req.body;
-    const updatedSubmission = await taskService.editSubmissionOfSubTask(taskId, subTaskId, submissionData);
+    let imageFile = null;
+
+    if (req.file) {
+      fileName = req.file.filename;
+      if (!fileName && req.file.originalname) {
+        fileName = req.file.originalname.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '');
+      }
+      if (fileName) {
+        submissionData.photoPath = `/uploads/${fileName}`;
+        fileToDelete = path.join(__dirname, '..', 'uploads', fileName);
+      }
+      imageFile = req.file;
+    }
+
+    const updatedSubmission = await taskService.editSubmissionOfSubTask(
+      taskId,
+      subTaskId,
+      submissionData,
+      imageFile
+    );
     res.json({ success: true, data: updatedSubmission });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
-  }
-}
-
-/**
- * Controller to fetch submission for a subTask within a TaskRecord.
- * Expects req.params.taskId and req.params.subTaskId.
- */
-async function fetchSubmissionOfSubTaskController(req, res) {
-  try {
-    const { taskId, subTaskId } = req.params;
-    const submission = await taskService.fetchSubmissionOfSubTask(taskId, subTaskId);
-    res.json({ success: true, data: submission });
-  } catch (error) {
+    if (fileToDelete) {
+      fs.unlink(fileToDelete, err => {
+        if (err) {
+          console.error('Failed to delete uploaded file after error:', fileToDelete, err);
+        }
+      });
+    }
     res.status(400).json({ success: false, message: error.message });
   }
 }
@@ -220,6 +322,22 @@ async function deleteSubmissionOfSubTaskController(req, res) {
     const { taskId, subTaskId } = req.params;
     const updatedSubTask = await taskService.deleteSubmissionOfSubTask(taskId, subTaskId);
     res.json({ success: true, data: updatedSubTask });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+}
+
+
+
+/**
+ * Controller to fetch submission for a subTask within a TaskRecord.
+ * Expects req.params.taskId and req.params.subTaskId.
+ */
+async function fetchSubmissionOfSubTaskController(req, res) {
+  try {
+    const { taskId, subTaskId } = req.params;
+    const submission = await taskService.fetchSubmissionOfSubTask(taskId, subTaskId);
+    res.json({ success: true, data: submission });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }

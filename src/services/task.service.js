@@ -280,35 +280,47 @@ async function deleteSubTask(taskId, subTaskIndex) {
 
 /**
  * Create (add) submission details for a subTask in a TaskRecord using taskId and subTaskId.
- * submissionData: object containing submission fields to store
+ * Handles uploaded image path from req.file if available.
+ * 
+ * submissionData: object containing submission fields to store (from req.body)
+ * imageFile: Express multer file object if provided (optional)
  */
-async function addSubmissionToSubTask(taskId, subTaskId, submissionData) {
+async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFile = null) {
   try {
-    console.log('addSubmissionToSubTask called with:', { taskId, subTaskId, submissionData });
-    if (!taskId) {
-      console.log("Error: taskId is required");
-      throw new Error("taskId is required");
-    }
-    if (!subTaskId) {
-      console.log("Error: subTaskId is required");
-      throw new Error("subTaskId is required");
-    }
+    // This log helps debugging in development but can be muted in prod
+    console.log('addSubmissionToSubTask called with:', { taskId, subTaskId, submissionData, hasImage: !!imageFile });
+
+    if (!taskId) throw new Error("taskId is required");
+    if (!subTaskId) throw new Error("subTaskId is required");
 
     const taskRecord = await TaskRecord.findOne({ taskId });
-    if (!taskRecord) {
-      console.log("Error: Task not found for taskId:", taskId);
-      throw new Error("Task not found");
-    }
+    if (!taskRecord) throw new Error("Task not found");
 
     const subTask = taskRecord.subTask.find((s) => s.subTaskId === subTaskId);
-    if (!subTask) {
-      console.log("Error: SubTask not found for subTaskId:", subTaskId);
-      throw new Error("SubTask not found");
-    }
 
-    subTask.submission = { ...submissionData };
+    if (!subTask) throw new Error("SubTask not found");
+
+    // If image file uploaded via multer, save its path (in-memory: mimick a URL or store Buffer depending on infra)
+    let challanPhotoPath = submissionData.photoPath;
+    // if (imageFile) {
+    //   // For example, you could generate a path or store the buffer (real file system/code may differ)
+    //   // Ideally, here you'd save to disk/cloud, get the path or url, and set challanPhotoPath to that string.
+    //   // For now, store the original filename as a placeholder. (Production: store/upload and save the file URL!)
+    //   challanPhotoPath = `/uploads/${imageFile.originalname}`;
+    // }
+
+    // Prepare submission to include updated challanPhotoPath
+    const submission = {
+      ...submissionData,
+      challanPhotoPath
+    };
+
+    subTask.submission = submission;
+
     await taskRecord.save();
-    console.log('Submission added/updated:', subTask.submission);
+
+    console.log('Submission added/updated, with challanPhotoPath:', submission.challanPhotoPath);
+
     return subTask.submission;
   } catch (error) {
     console.error('Error in addSubmissionToSubTask:', error);
@@ -318,29 +330,14 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData) {
 
 /**
  * Edit/update submission details for a subTask in a TaskRecord using taskId and subTaskId.
+ * Handles uploaded image path from req.file if available.
+ *
  * submissionData: object containing updated submission fields
+ * imageFile: Express multer file object if provided (optional)
  */
-async function editSubmissionOfSubTask(taskId, subTaskId, submissionData) {
-  // For now, same logic as add: upsert
-  return addSubmissionToSubTask(taskId, subTaskId, submissionData);
-}
-
-/**
- * Fetch submission details for a subTask in a TaskRecord using taskId and subTaskId.
- * Returns the submission object or throws if not found.
- */
-async function fetchSubmissionOfSubTask(taskId, subTaskId) {
-  if (!taskId) throw new Error("taskId is required");
-  if (!subTaskId) throw new Error("subTaskId is required");
-
-  const taskRecord = await TaskRecord.findOne({ taskId });
-  if (!taskRecord) throw new Error("Task not found");
-
-  const subTask = taskRecord.subTask.find((s) => s.subTaskId === subTaskId);
-  if (!subTask) throw new Error("SubTask not found");
-
-  // May be undefined if not set yet
-  return subTask.submission || {};
+async function editSubmissionOfSubTask(taskId, subTaskId, submissionData, imageFile = null) {
+  // Delegates to addSubmissionToSubTask for upsert, handles file as well
+  return addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFile);
 }
 
 /**
@@ -361,6 +358,26 @@ async function deleteSubmissionOfSubTask(taskId, subTaskId) {
   await taskRecord.save();
   return subTask;
 }
+
+/**
+ * Fetch submission details for a subTask in a TaskRecord using taskId and subTaskId.
+ * Returns the submission object or throws if not found.
+ */
+async function fetchSubmissionOfSubTask(taskId, subTaskId) {
+  if (!taskId) throw new Error("taskId is required");
+  if (!subTaskId) throw new Error("subTaskId is required");
+
+  const taskRecord = await TaskRecord.findOne({ taskId });
+  if (!taskRecord) throw new Error("Task not found");
+
+  const subTask = taskRecord.subTask.find((s) => s.subTaskId === subTaskId);
+  if (!subTask) throw new Error("SubTask not found");
+
+  // May be undefined if not set yet
+  return subTask.submission || {};
+}
+
+
 
 
 module.exports = {

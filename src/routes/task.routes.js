@@ -17,15 +17,17 @@ const {
   fetchSubmissionOfSubTaskController,
   deleteSubmissionOfSubTaskController,
 } = require('../controllers/task.controller');
+const { uploadFile } = require('../middleware/upload.middleware');
+const { uploadImage } = require('../middleware/imageUploadMiddlware');
 
 // Route to fetch task data schema config fields (dropdown options, etc.)
 router.get('/dropdowns', fetchTaskDataSchemaFieldsController);
 
 // Create one or multiple tasks
-router.post('/', createTasksController);
+router.post('/',uploadImage, createTasksController);
 
 // Edit/update a task by ID
-router.put('/:taskId', editTaskController);
+router.put('/:taskId',uploadImage, editTaskController);
 
 // Fetch single or multiple tasks
 router.get('/', fetchTasksController);
@@ -52,18 +54,19 @@ router.delete('/:taskId/subtasks/:subTaskIndex', deleteSubTaskController);
 
 
 
-// Add (create/upsert) a submission to a subTask
-router.post('/:taskId/subtasks/:subTaskId/submission', addSubmissionToSubTaskController);
+// Add (create/upsert) a submission to a subTask (supports file upload)
+router.post('/:taskId/subtasks/:subTaskId/submission', uploadImage, addSubmissionToSubTaskController);
 
-// Edit/update a submission for a subTask
-router.put('/:taskId/subtasks/:subTaskId/submission', editSubmissionOfSubTaskController);
+// Edit/update a submission for a subTask (supports file upload)
+router.put('/:taskId/subtasks/:subTaskId/submission', uploadImage, editSubmissionOfSubTaskController);
 
-// Fetch a submission for a subTask
-router.get('/:taskId/subtasks/:subTaskId/submission', fetchSubmissionOfSubTaskController);
+
 
 // Delete a submission from a subTask
 router.delete('/:taskId/subtasks/:subTaskId/submission', deleteSubmissionOfSubTaskController);
 
+// Fetch a submission for a subTask
+router.get('/:taskId/subtasks/:subTaskId/submission', fetchSubmissionOfSubTaskController);
 
 
 module.exports = router;

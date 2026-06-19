@@ -30,6 +30,16 @@ const submissionSchema = new mongoose.Schema(
       trim: true,
       enum: ['pending', 'paid', 'partial', 'unpaid'],
       default: 'pending'
+    },
+    challanNo: {
+      type: String,
+      required: false,
+      trim: true
+    },
+    challanPhotoPath: {
+      type: String,
+      required: false,
+      trim: true
     }
   },
   { _id: false }
