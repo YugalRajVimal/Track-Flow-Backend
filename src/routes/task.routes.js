@@ -16,6 +16,7 @@ const {
   editSubmissionOfSubTaskController,
   fetchSubmissionOfSubTaskController,
   deleteSubmissionOfSubTaskController,
+  fetchTasksWithPendingSubTasksController,
 } = require('../controllers/task.controller');
 const { uploadFile } = require('../middleware/upload.middleware');
 const { uploadImage } = require('../middleware/imageUploadMiddlware');
@@ -38,6 +39,11 @@ router.get('/by-task-id', fetchTaskByTaskIdController);
 
 // Delete a task by ID
 router.delete('/:taskId', deleteTaskController);
+
+
+// Route to fetch all tasks that have at least one subTask with 'pending' status
+router.get('/with-pending-subtasks', fetchTasksWithPendingSubTasksController);
+
 
 // SubTask routes
 // Add a subTask to a TaskRecord

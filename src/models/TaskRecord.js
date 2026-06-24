@@ -4,42 +4,47 @@ const submissionSchema = new mongoose.Schema(
   {
     fabricPartyName: {
       type: String,
-      required: false,
+      required: true,
       trim: true
     },
     recieverPartyName: {
       type: String,
-      required: false,
+      required: true,
       trim: true
     },
     length: {
       type: Number,
-      required: false
+      required: true
     },
     MTR: {
       type: Number,
-      required: false
+      required: true
     },
     Payment: {
       type: Number,
-      required: false
-    },
-    paymentStatus: {
-      type: String,
-      required: false,
-      trim: true,
-      enum: ['pending', 'paid', 'partial', 'unpaid'],
-      default: 'pending'
+      required: true
     },
     challanNo: {
       type: String,
-      required: false,
-      trim: true
+      required: true,
+      trim: true,
+      unique: true // Ensures challanNo is unique among all submissions collection-wide
     },
     challanPhotoPath: {
       type: String,
-      required: false,
+      required: true,
       trim: true
+    },
+    submitterName: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    // Added new field for enum warehouse/missing
+    locationStatus: {
+      type: String,
+      enum: ['warehouse', 'missing'],
+      required: true,
     }
   },
   { _id: false }
@@ -74,7 +79,7 @@ const subTaskSchema = new mongoose.Schema(
       type: String,
       required: false,
       trim: true,
-      enum: ['pending', 'processing', 'done', 'partiallyDone'], // For consistency, same as main taskStatus
+      enum: ['pending', 'processing', 'done', 'partiallyDone'],
       default: 'pending'
     },
     remark: {
@@ -83,11 +88,11 @@ const subTaskSchema = new mongoose.Schema(
       trim: true
     },
     submission: {
-      type: submissionSchema,
-      default: {}
+      type: [submissionSchema],
+      default: []
     }
   },
-  { _id: false } // Prevents creation of separate _id for each subTask
+  { _id: false }
 );
 
 const taskRecordSchema = new mongoose.Schema(

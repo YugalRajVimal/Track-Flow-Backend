@@ -5,7 +5,6 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 
-
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 
 // Routes
@@ -22,10 +21,9 @@ const offlineRoutes = require('./routes/offline.routes');
 const offlineDataRoutes = require('./routes/offlineData.routes');
 const taskDataRoutes = require('./routes/taskData.routes');
 const taskRoutes = require('./routes/task.routes');
-
-
-
-
+const submissionPaymentDataRoutes = require('./routes/submissionPaymentData.routes');
+const paymentRecordRoutes = require('./routes/paymentRecord.routes');
+const paymentDataRoutes = require('./routes/paymentData.routes'); // <-- ADDED
 
 const app = express();
 
@@ -107,10 +105,14 @@ app.use(`${API_PREFIX}/offline-data`, offlineDataRoutes);
 app.use(`${API_PREFIX}/task-data`, taskDataRoutes);
 app.use(`${API_PREFIX}/tasks`, taskRoutes);
 
+// Add new submissionPaymentData routes
+app.use(`${API_PREFIX}/submission-payment-data`, submissionPaymentDataRoutes);
 
+// Add new paymentRecord routes
+app.use(`${API_PREFIX}/payment-records`, paymentRecordRoutes);
 
-
-
+// Add new paymentData routes
+app.use(`${API_PREFIX}/payment-data`, paymentDataRoutes);
 
 // ─── Error Handling ─────────────────────────────────────────────────────────
 app.use(notFound);
