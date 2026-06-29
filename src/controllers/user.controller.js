@@ -53,7 +53,26 @@ const updateUserStatus = async (req, res, next) => {
   }
 };
 
+const verifyPaymentDepartmentPasscode = async (req, res, next) => {
+  try {
+    const { passcode } = req.body;
+    console.log(req.user);
+    const user = await userService.verifyPaymentDepartmentPasscode(req.user,passcode);
+    // Don't expose sensitive fields
+    const sanitizedUser = {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      // add more fields as needed, but avoid sensitive ones
+    };
+    return sendSuccess(res, 200, 'Passcode valid', sanitizedUser);
+  } catch (error) {
+    next(error);
+  }
+};
 
 
 
-module.exports = { getUsers, createUser, updateUser, deleteUser, updateUserStatus };
+
+module.exports = { getUsers, createUser, updateUser, deleteUser, updateUserStatus, verifyPaymentDepartmentPasscode };

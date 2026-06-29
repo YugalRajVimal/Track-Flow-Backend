@@ -388,6 +388,48 @@ const fs = require('fs');
 const path = require('path');
 
 
+
+/**
+ * Controller to fetch dashboard fabric statistics with filtering.
+ * Supports filtering by date range (today, yesterday, last7days, last30days, thismonth, custom),
+ * partyName, and fabricType via query parameters.
+ * Responds with totalFabricIn, totalFabricInProcessing, totalFabricSubmitted, totalFabricMissing.
+ * 
+ * Query params:
+ *   - dateRange: [today|yesterday|last7days|last30days|thismonth|custom]
+ *   - from: string (for custom dateRange; ISO date)
+ *   - to: string (for custom dateRange; ISO date)
+ *   - partyName: string
+ *   - fabricType: string
+ */
+async function fetchDashboardFabricStatsController(req, res) {
+  try {
+    const { dateRange, from, to, partyName, fabricType } = req.query;
+
+    // Build filter object as expected by fetchDashboardFabricStats
+    let filter = {};
+
+    // Date filtering logic
+    if (dateRange) {
+      if (dateRange === "custom" && from && to) {
+        filter.dateRange = { from, to };
+      } else {
+        // today, yesterday, last7days, last30days, thismonth
+        filter.dateRange = dateRange;
+      }
+    }
+
+    if (partyName) filter.partyName = partyName;
+    if (fabricType) filter.fabricType = fabricType;
+
+    const stats = await taskService.fetchDashboardFabricStats(filter);
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+
 /**
  * Controller to fetch specific task data schema config fields.
  */
@@ -732,6 +774,9 @@ async function fetchSubmissionOfSubTaskController(req, res) {
 
 
 module.exports = {
+
+  fetchDashboardFabricStatsController,
+
   fetchTaskDataSchemaFieldsController,
   createTasksController,
   editTaskController,

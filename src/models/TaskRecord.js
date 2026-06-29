@@ -20,10 +20,6 @@ const submissionSchema = new mongoose.Schema(
       type: Number,
       required: true
     },
-    Payment: {
-      type: Number,
-      required: true
-    },
     challanNo: {
       type: String,
       required: true,
@@ -74,13 +70,6 @@ const subTaskSchema = new mongoose.Schema(
     mtrShort: {
       type: Number,
       required: false
-    },
-    status: {
-      type: String,
-      required: false,
-      trim: true,
-      enum: ['pending', 'processing', 'done', 'partiallyDone'],
-      default: 'pending'
     },
     remark: {
       type: String,
@@ -162,13 +151,6 @@ const taskRecordSchema = new mongoose.Schema(
       type: String,
       required: false,
       trim: true
-    },
-    taskStatus: {
-      type: String,
-      required: false,
-      trim: true,
-      enum: ['pending', 'processing', 'done', 'partiallyDone'],
-      default: 'pending'
     },
     subTask: {
       type: [subTaskSchema],

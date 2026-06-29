@@ -1,21 +1,28 @@
 const mongoose = require('mongoose');
 
+const DepartmentSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+  },
+  senderNames: {
+    type: [String],
+    default: [],
+    required: true,
+  },
+  receiverNames: {
+    type: [String],
+    default: [],
+    required: true,
+  }
+}, { _id: false });
+
 const PaymentDataSchema = new mongoose.Schema({
-  receiverName: {
-    type: [String],
+  departments: {
+    type: [DepartmentSchema],
     required: true,
     default: [],
-  },
-  senderName: {
-    type: [String],
-    required: true,
-    default: [],
-  },
-  department: {
-    type: [String],
-    required: true,
-    default: [],
-  },
+  }
 }, {
   timestamps: true
 });

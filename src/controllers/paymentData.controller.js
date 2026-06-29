@@ -3,20 +3,36 @@ const { sendSuccess, sendError } = require('../utils/response');
 
 /**
  * Controller to create a new payment data entry.
- * All fields are arrays for dropdowns. See @PaymentData.js (1-23).
+ * Payload is expected to follow PaymentData.js schema:
+ * {
+ *   departments: [
+ *     { name: string, senderNames: [string], receiverNames: [string] }
+ *   ]
+ * }
  * POST /api/v1/payment-data
  */
 async function createPaymentData(req, res, next) {
   try {
     const payload = req.body;
-    // Ensure all dropdown fields are arrays for backend safety
-    if (
-      !Array.isArray(payload.receiverName) ||
-      !Array.isArray(payload.senderName) ||
-      !Array.isArray(payload.department)
-    ) {
-      return sendError(res, 400, "All dropdown fields (receiverName, senderName, department) must be arrays.");
+
+    // New structure: departments [{ name, senderNames, receiverNames }]
+    if (!Array.isArray(payload.departments)) {
+      return sendError(res, 400, "Field 'departments' must be an array of department objects.");
     }
+    for (const dept of payload.departments) {
+      if (
+        typeof dept.name !== 'string' ||
+        !Array.isArray(dept.senderNames) ||
+        !Array.isArray(dept.receiverNames)
+      ) {
+        return sendError(
+          res,
+          400,
+          "Every department must have: name (string), senderNames (string[]), receiverNames (string[])."
+        );
+      }
+    }
+
     const result = await paymentDataService.createPaymentData(payload);
     return sendSuccess(res, 201, 'Payment data created successfully.', result);
   } catch (error) {
@@ -26,7 +42,7 @@ async function createPaymentData(req, res, next) {
 
 /**
  * Controller to get all payment data entries.
- * All fields are arrays for dropdowns.
+ * Returns arrays for departments, senders, and receivers for each department.
  * GET /api/v1/payment-data
  */
 async function getAllPaymentData(req, res, next) {
@@ -40,7 +56,7 @@ async function getAllPaymentData(req, res, next) {
 
 /**
  * Controller to get a single payment data entry by ID.
- * All fields are arrays for dropdowns.
+ * Returns arrays for departments, senders, and receivers for each department.
  * GET /api/v1/payment-data/:id
  */
 async function getPaymentDataById(req, res, next) {
@@ -58,21 +74,34 @@ async function getPaymentDataById(req, res, next) {
 
 /**
  * Controller to update a payment data entry by ID.
- * All dropdown fields must be arrays (see model @PaymentData.js lines 1-23).
  * PUT /api/v1/payment-data/:id
+ * Payload should match the PaymentData.js schema:
+ * { departments: [ { name, senderNames, receiverNames } ] }
  */
 async function updatePaymentDataById(req, res, next) {
   try {
     const { id } = req.params;
     const update = req.body;
-    // Only allow updating if provided fields are arrays
-    if (
-      ('receiverName' in update && !Array.isArray(update.receiverName)) ||
-      ('senderName' in update && !Array.isArray(update.senderName)) ||
-      ('department' in update && !Array.isArray(update.department))
-    ) {
-      return sendError(res, 400, "All dropdown fields (receiverName, senderName, department) must be arrays.");
+
+    if ('departments' in update) {
+      if (!Array.isArray(update.departments)) {
+        return sendError(res, 400, "Field 'departments' must be an array of department objects.");
+      }
+      for (const dept of update.departments) {
+        if (
+          typeof dept.name !== 'string' ||
+          !Array.isArray(dept.senderNames) ||
+          !Array.isArray(dept.receiverNames)
+        ) {
+          return sendError(
+            res,
+            400,
+            "Every department must have: name (string), senderNames (string[]), receiverNames (string[])."
+          );
+        }
+      }
     }
+
     const result = await paymentDataService.updatePaymentDataById(id, update);
     if (!result) {
       return sendError(res, 404, 'Payment data not found.', null);

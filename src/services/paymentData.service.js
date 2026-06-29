@@ -2,21 +2,42 @@ const PaymentData = require('../models/PaymentData');
 
 /**
  * Create a new payment data entry.
- * All dropdown fields should be arrays.
+ * The structure is:
+ * {
+ *   departments: [
+ *     { name: string, senderNames: [string], receiverNames: [string] }
+ *   ]
+ * }
  * @param {Object} data - The payment data to create.
- * @param {Array<string>} data.receiverName
- * @param {Array<string>} data.senderName
- * @param {Array<string>} data.department
+ *   { departments: [ { name, senderNames, receiverNames } ] }
  * @returns {Promise<Object>} The newly created payment data.
  */
 async function createPaymentData(data) {
-  // Ensure all fields are arrays for dropdowns
-  const normalized = {
-    receiverName: Array.isArray(data.receiverName) ? data.receiverName : (data.receiverName ? [data.receiverName] : []),
-    senderName: Array.isArray(data.senderName) ? data.senderName : (data.senderName ? [data.senderName] : []),
-    department: Array.isArray(data.department) ? data.department : (data.department ? [data.department] : []),
-  };
-  const paymentData = new PaymentData(normalized);
+  // Accept input either as { departments } or in legacy flat mode for BC
+  let departments = Array.isArray(data.departments)
+    ? data.departments.map((dept) => ({
+        name: dept.name || "",
+        senderNames: Array.isArray(dept.senderNames) ? dept.senderNames : (dept.senderNames ? [dept.senderNames] : []),
+        receiverNames: Array.isArray(dept.receiverNames) ? dept.receiverNames : (dept.receiverNames ? [dept.receiverNames] : []),
+      }))
+    : [];
+
+  // Legacy input: receiverName, senderName, department as parallel arrays
+  if (!departments.length && Array.isArray(data.department)) {
+    const deptArr = data.department;
+    const senderArr = Array.isArray(data.senderName) ? data.senderName : (typeof data.senderName === "string" ? [data.senderName] : []);
+    const receiverArr = Array.isArray(data.receiverName) ? data.receiverName : (typeof data.receiverName === "string" ? [data.receiverName] : []);
+    // We allow lengths to differ
+    for (let i = 0; i < deptArr.length; i++) {
+      departments.push({
+        name: deptArr[i] || "",
+        senderNames: senderArr[i] ? [senderArr[i]] : [],
+        receiverNames: receiverArr[i] ? [receiverArr[i]] : [],
+      });
+    }
+  }
+
+  const paymentData = new PaymentData({ departments });
   return await paymentData.save();
 }
 
@@ -39,30 +60,36 @@ async function getPaymentDataById(id) {
 
 /**
  * Update a payment data entry by ID.
- * All dropdown fields should be arrays.
+ * Payload should be in the { departments: [...] } format as per model.
  * @param {string} id - The ID of the payment data to update.
- * @param {Object} update - The update to apply.
+ * @param {Object} update - The update to apply (departments).
  * @returns {Promise<Object|null>} The updated entry or null if not found.
  */
 async function updatePaymentDataById(id, update) {
-  // Ensure all fields are arrays for dropdowns during update
-  const normalized = {};
-  if (update.receiverName !== undefined) {
-    normalized.receiverName = Array.isArray(update.receiverName)
-      ? update.receiverName
-      : (update.receiverName ? [update.receiverName] : []);
+  let normalized = {};
+
+  if (Array.isArray(update.departments)) {
+    normalized.departments = update.departments.map((dept) => ({
+      name: dept.name || "",
+      senderNames: Array.isArray(dept.senderNames) ? dept.senderNames : (dept.senderNames ? [dept.senderNames] : []),
+      receiverNames: Array.isArray(dept.receiverNames) ? dept.receiverNames : (dept.receiverNames ? [dept.receiverNames] : []),
+    }));
+  } else if (update.department || update.senderName || update.receiverName) {
+    // Legacy flat update shape
+    const deptArr = Array.isArray(update.department) ? update.department : [];
+    const senderArr = Array.isArray(update.senderName) ? update.senderName : (typeof update.senderName === "string" ? [update.senderName] : []);
+    const receiverArr = Array.isArray(update.receiverName) ? update.receiverName : (typeof update.receiverName === "string" ? [update.receiverName] : []);
+    normalized.departments = [];
+    for (let i = 0; i < deptArr.length; i++) {
+      normalized.departments.push({
+        name: deptArr[i] || "",
+        senderNames: senderArr[i] ? [senderArr[i]] : [],
+        receiverNames: receiverArr[i] ? [receiverArr[i]] : [],
+      });
+    }
   }
-  if (update.senderName !== undefined) {
-    normalized.senderName = Array.isArray(update.senderName)
-      ? update.senderName
-      : (update.senderName ? [update.senderName] : []);
-  }
-  if (update.department !== undefined) {
-    normalized.department = Array.isArray(update.department)
-      ? update.department
-      : (update.department ? [update.department] : []);
-  }
-  // Only updating present fields
+
+  // Only updating present fields (departments)
   return await PaymentData.findByIdAndUpdate(id, normalized, { new: true });
 }
 

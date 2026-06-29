@@ -1,558 +1,209 @@
-// const TaskData = require('../models/TaskData');
-// const TaskRecord = require('../models/TaskRecord');
-
-
-// /**
-//  * Service to fetch taskDataSchema config fields from TaskData, e.g.,
-//  * partyName, transportName, fabricType, length, sinkage, recieverName
-//  * Returns a single document with those fields (assumes only one config doc)
-//  */
-// async function fetchTaskDataSchemaFields() {
-//   // Only fetch the relevant config fields
-//   const config = await TaskData.findOne({}, {
-//     partyName: 1,
-//     transportName: 1,
-//     fabricType: 1,
-//     length: 1,
-//     sinkage: 1,
-//     recieverName: 1,
-//     jigars:1,
-//     programName:1,
-//     FabricPartyName:1,
-//     recieverPartyName:1,
-//     _id: 0,
-//   });
-//   if (!config) throw new Error("Task data schema config not found");
-//   return config;
-// }
-
-
-
-
-// /**
-//  * Create one or multiple tasks.
-//  *
-//  * - Accepts:
-//  *   - groupData: { challanNo, partyName, transportName, receiverName, remark, challanPhotoPath }
-//  *   - taskDetails: array of objects [{ FabricType, Length, BuiltyNo, MTR, sinkage, mtrAfterSinkage, totalRolls, taskStatus }]
-//  *
-//  * - taskStatus must be one of: "pending", "processing", "done", "partiallyDone"
-//  * Returns created tasks.
-//  *
-//  * - taskId: Combination of sanitized partyName and counter (e.g. {partyName}-{counter})
-//  */
-// async function createTasks(groupData, taskDetails) {
-//   if (!Array.isArray(taskDetails) || taskDetails.length === 0) {
-//     throw new Error("taskDetails array is required");
-//   }
-
-//   // Allowed taskStatus values
-//   const allowedStatuses = ['pending', 'processing', 'done', 'partiallyDone'];
-
-//   // Get the TaskData document (assuming only one document containing taskIdCounter exists)
-//   let taskDataDoc = await TaskData.findOne();
-
-//   if (!taskDataDoc) {
-//     // If not exist, initialize (in production, guard against duplicates)
-//     taskDataDoc = await TaskData.create({ taskIdCounter: 1 });
-//   }
-//   let currentCounter = taskDataDoc.taskIdCounter || 1;
-
-//   // Get the partyName from groupData (fallback to blank if missing)
-//   const rawPartyName = groupData.partyName || "";
-//   // Make a safe, slug-like string: all uppercase, remove spaces & special chars
-//   const sanitizedPartyName = rawPartyName
-//     .toString()
-//     .trim()
-//     .toUpperCase()
-//     .replace(/\s+/g, "_")
-//     .replace(/[^A-Z0-9_]/g, "");
-
-//   // Prepare all new tasks, assign taskId and normalize taskStatus
-//   const newTasks = taskDetails.map(item => {
-//     let status = (item.taskStatus || 'pending');
-//     if (!allowedStatuses.includes(status)) {
-//       status = 'pending';
-//     }
-//     // taskId: {sanitizedPartyName}-{counter}
-//     const taskId = sanitizedPartyName
-//       ? `${sanitizedPartyName}-${currentCounter++}`
-//       : `${currentCounter++}`;
-//     return {
-//       ...groupData,
-//       ...item,
-//       taskStatus: status,
-//       taskId,
-//     };
-//   });
-
-//   // Bulk insert tasks
-//   const created = await TaskRecord.insertMany(newTasks);
-
-//   // Update the counter for next use
-//   taskDataDoc.taskIdCounter = currentCounter;
-//   await taskDataDoc.save();
-
-//   return created;
-// }
-
-// /**
-//  * Edit/Update a task by taskId.
-//  * Accepts: taskId (string), updateData (object)
-//  * - If taskStatus is provided, ensures it is one of: "pending", "processing", "done", "partiallyDone"
-//  */
-// async function editTask(taskId, updateData) {
-//   if (!taskId) throw new Error("taskId is required");
-//   const allowedStatuses = ['pending', 'processing', 'done', 'partiallyDone'];
-
-//   // Handle taskStatus normalization if present
-//   if (
-//     Object.prototype.hasOwnProperty.call(updateData, 'taskStatus') &&
-//     !allowedStatuses.includes(updateData.taskStatus)
-//   ) {
-//     updateData.taskStatus = 'pending';
-//   }
-
-//   const updated = await TaskRecord.findOneAndUpdate({ taskId }, updateData, { new: true });
-//   if (!updated) throw new Error("Task not found");
-//   return updated;
-// }
-
-// /**
-//  * Fetch tasks. 
-//  * - If taskId provided, return single. 
-//  * - Otherwise, support filter (partyName, transportName, etc)
-//  */
-// async function fetchTasks(filter = {}) {
-//   if (filter.taskId) {
-//     // Single fetch
-//     return await TaskRecord.findOne({ taskId: filter.taskId });
-//   }
-//   // Multi fetch (optionally, add pagination)
-//   return await TaskRecord.find(filter).sort({ createdAt: -1 });
-// }
-
-// /**
-//  * Fetch a task by its taskId.
-//  * Returns the TaskRecord if found, null otherwise.
-//  */
-// async function fetchByTaskId(taskId) {
-//   if (!taskId) throw new Error("taskId is required");
-//   return await TaskRecord.findOne({ taskId });
-// }
-
-// /**
-//  * Fetch all Tasks which have at least one subTask with 'pending' status.
-//  * Returns an array of TaskRecords, each with subTasks.
-//  */
-// async function fetchTasksWithPendingSubTasks() {
-//   // Find all tasks where subTask.status == 'pending' for at least one subTask
-//   // (matches at least one subTask with status 'pending')
-//   return await TaskRecord.find({ 'subTask.status': 'pending' }).sort({ createdAt: -1 });
-// }
-
-
-
-// /**
-//  * Delete a task by taskId
-//  */
-// async function deleteTask(taskId) {
-//   if (!taskId) throw new Error("taskId is required");
-//   const deleted = await TaskRecord.findOneAndDelete({ taskId });
-//   if (!deleted) throw new Error("Task not found");
-//   return deleted;
-// }
-
-
-
-// /**
-//  * Add a subTask to a specific TaskRecord by taskId.
-//  * subTask must follow the subTaskSchema from TaskRecord.js
-//  * The sum of all subTask 'mtr' values (including the new one) must NOT exceed the Task's TotalMTR (MTR field).
-//  * Assigns an auto-incremented subTaskId from TaskData.subTaskIdCounter in the format ${taskId}-S-${counter}.
-//  */
-// async function addSubTask(taskId, subTask) {
-//   if (!taskId) throw new Error("taskId is required");
-//   if (!subTask) throw new Error("subTask object is required");
-
-//   // Fetch the TaskRecord first to get MTR and existing subTasks
-//   const taskRecord = await TaskRecord.findOne({ taskId });
-//   if (!taskRecord) throw new Error("Task not found");
-
-//   // Make sure MTR is present on Task
-//   const totalMTR = taskRecord.MTR;
-//   if (typeof totalMTR !== "number" || isNaN(totalMTR)) {
-//     throw new Error("TotalMTR (MTR) not defined on this task");
-//   }
-
-//   // Calculate total after adding new subTask
-//   const sumExistingMTR = (Array.isArray(taskRecord.subTask) ? taskRecord.subTask.reduce((acc, sub) => acc + (Number(sub.mtr) || 0), 0) : 0);
-//   const newSubTaskMTR = Number(subTask.mtr) || 0;
-//   if ((sumExistingMTR + newSubTaskMTR) > totalMTR) {
-//     throw new Error("Cannot add subTask: the sum of MTRs would exceed TotalMTR of the task");
-//   }
-
-//   // Fetch/update the subTaskId counter from TaskData (single document for counters)
-//   const TaskData = require('../models/TaskData');
-//   // Find or create the TaskData singleton doc
-//   let taskDataDoc = await TaskData.findOne();
-//   if (!taskDataDoc) {
-//     taskDataDoc = await TaskData.create({});
-//   }
-
-//   // Default beginning
-//   if (typeof taskDataDoc.subTaskIdCounter !== "number") {
-//     taskDataDoc.subTaskIdCounter = 1;
-//   }
-
-//   const newSubTaskCounter = taskDataDoc.subTaskIdCounter;
-//   taskDataDoc.subTaskIdCounter += 1;
-//   await taskDataDoc.save();
-
-//   // Set subTaskId in the format `${taskId}-S-${counter}`
-//   subTask.subTaskId = `${taskId}-S-${newSubTaskCounter}`;
-
-//   // Add subTask now
-//   taskRecord.subTask.push(subTask);
-//   await taskRecord.save();
-//   return taskRecord;
-// }
-
-// /**
-//  * Edit/update a single subTask of a TaskRecord, using its index in the subTask array.
-//  * Accepts: taskId (string), subTaskIndex (number), updateData (object)
-//  * The sum of all subTask 'mtr' values (with the edited one updated) must NOT exceed the Task's TotalMTR (MTR field).
-//  */
-// async function editSubTask(taskId, subTaskIndex, updateData) {
-//   if (!taskId) throw new Error("taskId is required");
-//   if (typeof subTaskIndex !== 'number') throw new Error("subTaskIndex is required and must be a number");
-
-//   const taskRecord = await TaskRecord.findOne({ taskId });
-//   if (!taskRecord) throw new Error("Task not found");
-
-//   if (!Array.isArray(taskRecord.subTask) || subTaskIndex < 0 || subTaskIndex >= taskRecord.subTask.length) {
-//     throw new Error("Invalid subTaskIndex");
-//   }
-
-//   // Make sure MTR is present on Task
-//   const totalMTR = taskRecord.MTR;
-//   if (typeof totalMTR !== "number" || isNaN(totalMTR)) {
-//     throw new Error("TotalMTR (MTR) not defined on this task");
-//   }
-
-//   // Calculate what the new sum would be if we update .mtr
-//   const existingSubTasks = taskRecord.subTask;
-//   let sumMTR = 0;
-//   for (let i = 0; i < existingSubTasks.length; i++) {
-//     if (i === subTaskIndex) {
-//       // Use the new mtr value if it's part of updateData, otherwise existing
-//       sumMTR += (updateData.hasOwnProperty('mtr') ? (Number(updateData.mtr) || 0) : (Number(existingSubTasks[i].mtr) || 0));
-//     } else {
-//       sumMTR += (Number(existingSubTasks[i].mtr) || 0);
-//     }
-//   }
-//   if (sumMTR > totalMTR) {
-//     throw new Error("Cannot update subTask: the sum of MTRs would exceed TotalMTR of the task");
-//   }
-
-//   Object.assign(taskRecord.subTask[subTaskIndex], updateData);
-//   await taskRecord.save();
-//   return taskRecord;
-// }
-
-// /**
-//  * Fetch subTasks for a specific TaskRecord by taskId.
-//  * If subTaskIndex is provided, returns only that subTask.
-//  */
-// async function fetchSubTasks(taskId, subTaskIndex = undefined) {
-//   if (!taskId) throw new Error("taskId is required");
-
-//   const taskRecord = await TaskRecord.findOne({ taskId });
-//   if (!taskRecord) throw new Error("Task not found");
-
-//   if (typeof subTaskIndex === 'number') {
-//     if (
-//       !Array.isArray(taskRecord.subTask) ||
-//       subTaskIndex < 0 ||
-//       subTaskIndex >= taskRecord.subTask.length
-//     ) {
-//       throw new Error("Invalid subTaskIndex");
-//     }
-//     return taskRecord.subTask[subTaskIndex];
-//   } else {
-//     return taskRecord.subTask;
-//   }
-// }
-
-// /**
-//  * Delete a subTask by index from the subTask array in TaskRecord.
-//  * Accepts: taskId (string), subTaskIndex (number)
-//  */
-// async function deleteSubTask(taskId, subTaskIndex) {
-//   if (!taskId) throw new Error("taskId is required");
-//   if (typeof subTaskIndex !== "number") throw new Error("subTaskIndex must be a number");
-
-//   const taskRecord = await TaskRecord.findOne({ taskId });
-//   if (!taskRecord) throw new Error("Task not found");
-
-//   if (!Array.isArray(taskRecord.subTask) || subTaskIndex < 0 || subTaskIndex >= taskRecord.subTask.length) {
-//     throw new Error("Invalid subTaskIndex");
-//   }
-
-//   taskRecord.subTask.splice(subTaskIndex, 1);
-//   await taskRecord.save();
-//   return taskRecord;
-// }
-
-
-// /**
-//  * Create (add) submission details for a subTask in a TaskRecord using taskId and subTaskId.
-//  * All fields in the submission are mandatory, paymentStatus is removed.
-//  * submitterName is mandatory. challanNo must be unique across all submissions.
-//  * Handles uploaded image path from req.file if available.
-//  * 
-//  * submissionData: object containing all required submission fields
-//  * imageFile: Express multer file object if provided (optional)
-//  */
-// async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFile = null) {
-//   try {
-//     console.log('addSubmissionToSubTask called with:', { taskId, subTaskId, submissionData, hasImage: !!imageFile });
-
-//     if (!taskId) throw new Error("taskId is required");
-//     if (!subTaskId) throw new Error("subTaskId is required");
-
-//     // All submission fields must be present and not undefined/null
-//     const requiredFields = [
-//       'fabricPartyName',
-//       'recieverPartyName',
-//       'length',
-//       'MTR',
-//       'Payment',
-//       'challanNo',
-//       'submitterName'
-//     ];
-//     for (const field of requiredFields) {
-//       if (
-//         typeof submissionData[field] === 'undefined' ||
-//         submissionData[field] === null ||
-//         (typeof submissionData[field] === 'string' && submissionData[field].trim() === '')
-//       ) {
-//         throw new Error(`${field} is required for submission`);
-//       }
-//     }
-
-//     // Check unique challanNo across all submissions in all subTasks
-//     const taskRecord = await TaskRecord.findOne({ taskId });
-//     if (!taskRecord) throw new Error("Task not found");
-
-//     for (const st of taskRecord.subTask || []) {
-//       for (const sub of Array.isArray(st.submission) ? st.submission : []) {
-//         if (sub.challanNo === submissionData.challanNo) {
-//           throw new Error("challanNo must be unique among all submissions in this TaskRecord");
-//         }
-//       }
-//     }
-
-//     const subTask = taskRecord.subTask.find((s) => s.subTaskId === subTaskId);
-//     if (!subTask) throw new Error("SubTask not found");
-
-//     // Prepare the challanPhotoPath from file if present
-//     let challanPhotoPath = submissionData.challanPhotoPath;
-//     // if (imageFile) {
-//     //   challanPhotoPath = `/uploads/${imageFile.originalname}`;
-//     // }
-
-//     const submission = {
-//       fabricPartyName: submissionData.fabricPartyName,
-//       recieverPartyName: submissionData.recieverPartyName,
-//       length: submissionData.length,
-//       MTR: submissionData.MTR,
-//       Payment: submissionData.Payment,
-//       challanNo: submissionData.challanNo,
-//       challanPhotoPath,
-//       submitterName: submissionData.submitterName
-//     };
-
-//     if (!Array.isArray(subTask.submission)) {
-//       subTask.submission = [];
-//     }
-//     subTask.submission.push(submission);
-
-//     await taskRecord.save();
-
-//     console.log('Submission added, with challanPhotoPath:', submission.challanPhotoPath);
-
-//     return submission; // Return the last added submission
-//   } catch (error) {
-//     console.error('Error in addSubmissionToSubTask:', error);
-//     throw error;
-//   }
-// }
-
-// /**
-//  * Edit (update) an existing submission for a subTask in a TaskRecord using taskId, subTaskId and submissionIndex.
-//  * All fields in the submission are mandatory, paymentStatus is removed.
-//  * submitterName is mandatory. challanNo must be unique across all submissions except for itself.
-//  *
-//  * submissionIndex: index of the submission to edit in the array (required)
-//  * submissionData: object containing updated submission fields
-//  * imageFile: Express multer file object if provided (optional)
-//  */
-// async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submissionData, imageFile = null) {
-//   try {
-//     if (!taskId) throw new Error("taskId is required");
-//     if (!subTaskId) throw new Error("subTaskId is required");
-//     if (typeof submissionIndex !== "number") throw new Error("submissionIndex is required and must be a number");
-
-//     // All submission fields must be present and not undefined/null
-//     const requiredFields = [
-//       'fabricPartyName',
-//       'recieverPartyName',
-//       'length',
-//       'MTR',
-//       'Payment',
-//       'challanNo',
-//       'submitterName'
-//     ];
-//     for (const field of requiredFields) {
-//       if (
-//         typeof submissionData[field] === 'undefined' ||
-//         submissionData[field] === null ||
-//         (typeof submissionData[field] === 'string' && submissionData[field].trim() === '')
-//       ) {
-//         throw new Error(`${field} is required for submission`);
-//       }
-//     }
-
-//     const taskRecord = await TaskRecord.findOne({ taskId });
-//     if (!taskRecord) throw new Error("Task not found");
-
-//     const subTask = taskRecord.subTask.find((s) => s.subTaskId === subTaskId);
-//     if (!subTask) throw new Error("SubTask not found");
-
-//     if (!Array.isArray(subTask.submission) || submissionIndex < 0 || submissionIndex >= subTask.submission.length) {
-//       throw new Error("Invalid submissionIndex");
-//     }
-
-//     // Check unique challanNo across all submissions in all subTasks, except itself
-//     for (const st of taskRecord.subTask || []) {
-//       for (const [idx, sub] of (Array.isArray(st.submission) ? st.submission.entries() : [])) {
-//         if (
-//           sub.challanNo === submissionData.challanNo &&
-//           !(st.subTaskId === subTaskId && idx === submissionIndex)
-//         ) {
-//           throw new Error("challanNo must be unique among all submissions in this TaskRecord");
-//         }
-//       }
-//     }
-
-//     let challanPhotoPath = submissionData.challanPhotoPath;
-//     // if (imageFile) {
-//     //   challanPhotoPath = `/uploads/${imageFile.originalname}`;
-//     // }
-
-//     const updatedSubmission = {
-//       fabricPartyName: submissionData.fabricPartyName,
-//       recieverPartyName: submissionData.recieverPartyName,
-//       length: submissionData.length,
-//       MTR: submissionData.MTR,
-//       Payment: submissionData.Payment,
-//       challanNo: submissionData.challanNo,
-//       challanPhotoPath,
-//       submitterName: submissionData.submitterName
-//     };
-
-//     // Replace the specific submission at submissionIndex
-//     subTask.submission[submissionIndex] = updatedSubmission;
-
-//     await taskRecord.save();
-
-//     return updatedSubmission;
-//   } catch (error) {
-//     console.error('Error in editSubmissionOfSubTask:', error);
-//     throw error;
-//   }
-// }
-
-// /**
-//  * Delete a specific submission entry from a subTask in a TaskRecord using taskId, subTaskId and submissionIndex.
-//  * Returns the updated subTask after removing the submission at the specified index.
-//  */
-// async function deleteSubmissionOfSubTask(taskId, subTaskId, submissionIndex) {
-//   if (!taskId) throw new Error("taskId is required");
-//   if (!subTaskId) throw new Error("subTaskId is required");
-//   if (typeof submissionIndex !== "number") throw new Error("submissionIndex is required and must be a number");
-
-//   const taskRecord = await TaskRecord.findOne({ taskId });
-//   if (!taskRecord) throw new Error("Task not found");
-
-//   const subTask = taskRecord.subTask.find((s) => s.subTaskId === subTaskId);
-//   if (!subTask) throw new Error("SubTask not found");
-
-//   if (!Array.isArray(subTask.submission) || submissionIndex < 0 || submissionIndex >= subTask.submission.length) {
-//     throw new Error("Invalid submissionIndex");
-//   }
-
-//   subTask.submission.splice(submissionIndex, 1);
-//   await taskRecord.save();
-//   return subTask;
-// }
-
-// /**
-//  * Fetch all submission details (array) for a subTask in a TaskRecord using taskId and subTaskId.
-//  * Optionally, provide a submissionIndex to fetch one specific submission in the array.
-//  * Returns the submission array/object or throws if not found.
-//  */
-// async function fetchSubmissionOfSubTask(taskId, subTaskId, submissionIndex = undefined) {
-//   if (!taskId) throw new Error("taskId is required");
-//   if (!subTaskId) throw new Error("subTaskId is required");
-
-//   const taskRecord = await TaskRecord.findOne({ taskId });
-//   if (!taskRecord) throw new Error("Task not found");
-
-//   const subTask = taskRecord.subTask.find((s) => s.subTaskId === subTaskId);
-//   if (!subTask) throw new Error("SubTask not found");
-
-//   if (!Array.isArray(subTask.submission)) {
-//     return [];
-//   }
-//   if (typeof submissionIndex === 'number') {
-//     if (submissionIndex < 0 || submissionIndex >= subTask.submission.length) {
-//       throw new Error("Invalid submissionIndex");
-//     }
-//     return subTask.submission[submissionIndex];
-//   }
-//   return subTask.submission;
-// }
-
-
-
-
-// module.exports = {
-
-//     fetchTaskDataSchemaFields,
-//   createTasks,
-//   editTask,
-//   fetchTasks,
-//   fetchByTaskId,
-//   deleteTask,
-
-//   fetchTasksWithPendingSubTasks,
-
-//   addSubTask,
-//   fetchSubTasks,
-//   editSubTask,
-//   deleteSubTask,
-
-//   addSubmissionToSubTask,
-//   editSubmissionOfSubTask,
-//   fetchSubmissionOfSubTask,
-//   deleteSubmissionOfSubTask
-// };
 
 
 const TaskData = require('../models/TaskData');
 const TaskRecord = require('../models/TaskRecord');
+
+
+
+/**
+ * Fetch dashboard fabric stats with debug logs and filter options:
+ *  - Filter by: Date range (Today, Yesterday, Last 7 days, Last 30 days, This month, Custom)
+ *  - PartyName, FabricType
+ *  - All other stats are as before.
+ * @param {Object} filter
+ *        filter.dateRange: "today"|"yesterday"|"last7days"|"last30days"|"thismonth"|{from:date,to:date}|null
+ *        filter.partyName
+ *        filter.fabricType
+ */
+async function fetchDashboardFabricStats(filter = {}) {
+  const {
+    dateRange = null,
+    partyName = null,
+    fabricType = null
+  } = filter || {};
+
+  // 1. Build date filter for Mongo `_createdAt` (or fallback to createdAt/updatedAt)
+  let dateQuery = {};
+  if (dateRange) {
+    let from, to;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    if (typeof dateRange === 'string') {
+      switch(dateRange) {
+        case 'today':
+          from = new Date(today);
+          to = new Date(today);
+          to.setHours(23,59,59,999);
+          break;
+        case 'yesterday':
+          from = new Date(today);
+          from.setDate(from.getDate() - 1);
+          to = new Date(today);
+          to.setDate(to.getDate() - 1);
+          to.setHours(23,59,59,999);
+          break;
+        case 'last7days':
+          from = new Date(today);
+          from.setDate(from.getDate() - 6);
+          to = new Date(today);
+          to.setHours(23,59,59,999);
+          break;
+        case 'last30days':
+          from = new Date(today);
+          from.setDate(from.getDate() - 29);
+          to = new Date(today);
+          to.setHours(23,59,59,999);
+          break;
+        case 'thismonth':
+          from = new Date(today.getFullYear(), today.getMonth(), 1);
+          to = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+          break;
+        default:
+          break;
+      }
+    } else if (typeof dateRange === 'object' && dateRange.from && dateRange.to) {
+      from = new Date(dateRange.from);
+      to = new Date(dateRange.to);
+      to.setHours(23,59,59,999);
+    }
+
+    if (from && to) {
+      dateQuery.createdAt = { $gte: from, $lte: to };
+    }
+  }
+
+  // 2. Build partyName/fabricType filter
+  let recordMatch = {};
+  if (partyName) recordMatch.partyName = partyName;
+  if (fabricType) recordMatch.FabricType = fabricType;
+
+  // Add dateQuery into recordMatch for querying TaskRecord
+  recordMatch = { ...recordMatch, ...dateQuery };
+
+  // 3. Fetch filtered TaskRecords
+  const allTaskRecords = await TaskRecord.find(
+    recordMatch,
+    {
+      subTask: 1,
+      sinkage: 1,
+      Length: 1,
+      taskId: 1,
+      _id: 0,
+    }
+  );
+  console.log('[Dashboard] Fetched TaskRecords:', allTaskRecords.length, 'Filter:', recordMatch);
+
+  let totalFabricIn = 0;
+  let totalFabricInProcessing = 0;
+  let totalFabricSubmitted = 0;
+  let totalFabricMissing = 0;
+
+  for (const rec of allTaskRecords) {
+    const taskSinkage = Number(rec.sinkage) || 0;
+    const taskLength = Number(rec.Length) || 0;
+    const subTasks = Array.isArray(rec.subTask) ? rec.subTask : [];
+
+    for (const subTask of subTasks) {
+      // Extra filter: Filter subTask by partyName/fabricType if present in subTask (for some use cases)
+      // (skip for now: records are already filtered at parent level)
+
+      const subTaskId = subTask.subTaskId || subTask._id || "-";
+      const subTaskMtr = Number(subTask.mtr) || 0;
+
+      // A. sum all subTask.mtr for totalFabricIn
+      totalFabricIn += subTaskMtr;
+      console.log(
+        `[Dashboard] Task=${rec.taskId} SubTask=${subTaskId} mtr=${subTaskMtr} (totalFabricIn running sum: ${totalFabricIn})`
+      );
+
+      // B. Processing status: see logic
+      let status = subTask.status || "";
+      let isProcessing = false;
+      if (
+        status === "processing" ||
+        status === "pending" ||
+        status === "in_progress"
+      ) {
+        isProcessing = true;
+      } else if (
+        (!subTask.submission || subTask.submission.length === 0) &&
+        !status
+      ) {
+        isProcessing = true;
+      }
+      if (isProcessing) {
+        totalFabricInProcessing += subTaskMtr;
+        console.log(
+          `  [Dashboard] SubTask ${subTaskId} counted as processing (status=${status}). Added ${subTaskMtr} (sum: ${totalFabricInProcessing})`
+        );
+      }
+
+      // Submission(s)
+      let submissionsArr = [];
+      if (Array.isArray(subTask.submission)) {
+        submissionsArr = subTask.submission;
+      } else if (subTask.submission) {
+        submissionsArr = [subTask.submission];
+      }
+
+      let sumSubmissionMTR = 0;
+      let hasMissing = false;
+
+      for (const submission of submissionsArr) {
+        const submissionMTR = Number(submission.MTR) || 0;
+        sumSubmissionMTR += submissionMTR;
+        if (submission.locationStatus === "missing") hasMissing = true;
+      }
+      totalFabricSubmitted += sumSubmissionMTR;
+      console.log(
+        `  [Dashboard] SubTask ${subTaskId} submissions: count=${submissionsArr.length}, sumSubmissionMTR=${sumSubmissionMTR}, hasMissing=${hasMissing} (totalFabricSubmitted=${totalFabricSubmitted})`
+      );
+
+      // Missing: if any submission marked missing
+      if (
+        hasMissing &&
+        typeof subTask.mtr !== "undefined" &&
+        typeof rec.sinkage !== "undefined" &&
+        typeof rec.Length !== "undefined"
+      ) {
+        const mtrRaw = Number(subTask.mtr);
+        const sinkagePercent = Number(rec.sinkage) || 0;
+        const lengthPercent = Number(rec.Length) || 0;
+        const lengthLossPercent = 100 - lengthPercent;
+        const totalPercent = sinkagePercent + lengthLossPercent;
+        // from SubmissionManagement.jsx: mtrAfter = mtr - (mtr * totalPercent / 100)
+        const mtrAfterLengthSinkage =
+          mtrRaw - (mtrRaw * totalPercent) / 100;
+        const missingForSubTask = Math.max(mtrAfterLengthSinkage - sumSubmissionMTR, 0);
+
+        totalFabricMissing += missingForSubTask;
+        console.log(
+          `    [Dashboard] SubTask ${subTaskId}: missing calculation (mtrAfterLengthSinkage=${mtrAfterLengthSinkage}, submissionSum=${sumSubmissionMTR}, missingForSubTask=${missingForSubTask}) (Running totalFabricMissing=${totalFabricMissing})`
+        );
+      }
+    }
+  }
+
+  // Final totals
+  console.log("[Dashboard] Results:");
+  console.log("  totalFabricIn:", totalFabricIn);
+  console.log("  totalFabricInProcessing:", totalFabricInProcessing);
+  console.log("  totalFabricSubmitted:", totalFabricSubmitted);
+  console.log("  totalFabricMissing:", totalFabricMissing);
+
+  return {
+    totalFabricIn,
+    totalFabricInProcessing,
+    totalFabricSubmitted,
+    totalFabricMissing: Number(totalFabricMissing.toFixed(2)),
+  };
+}
+
+
+
+
+
 
 
 /**
@@ -585,8 +236,6 @@ async function createTasks(groupData, taskDetails) {
     throw new Error('taskDetails array is required');
   }
 
-  const allowedStatuses = ['pending', 'processing', 'done', 'partiallyDone'];
-
   let taskDataDoc = await TaskData.findOne();
   if (!taskDataDoc) {
     taskDataDoc = await TaskData.create({ taskIdCounter: 1 });
@@ -600,12 +249,12 @@ async function createTasks(groupData, taskDetails) {
     .replace(/[^A-Z0-9_]/g, '');
 
   const newTasks = taskDetails.map(item => {
-    let status = item.taskStatus || 'pending';
-    if (!allowedStatuses.includes(status)) status = 'pending';
     const taskId = sanitizedPartyName
       ? `${sanitizedPartyName}-${currentCounter++}`
       : `${currentCounter++}`;
-    return { ...groupData, ...item, taskStatus: status, taskId };
+    // Remove taskStatus in final object
+    const { taskStatus, ...rest } = item;
+    return { ...groupData, ...rest, taskId };
   });
 
   const created = await TaskRecord.insertMany(newTasks);
@@ -620,12 +269,9 @@ async function createTasks(groupData, taskDetails) {
  */
 async function editTask(taskId, updateData) {
   if (!taskId) throw new Error('taskId is required');
-  const allowedStatuses = ['pending', 'processing', 'done', 'partiallyDone'];
-  if (
-    Object.prototype.hasOwnProperty.call(updateData, 'taskStatus') &&
-    !allowedStatuses.includes(updateData.taskStatus)
-  ) {
-    updateData.taskStatus = 'pending';
+  // Remove taskStatus if present in updateData
+  if (Object.prototype.hasOwnProperty.call(updateData, 'taskStatus')) {
+    delete updateData.taskStatus;
   }
   const updated = await TaskRecord.findOneAndUpdate({ taskId }, updateData, { new: true });
   if (!updated) throw new Error('Task not found');
@@ -655,7 +301,7 @@ async function fetchByTaskId(taskId) {
  * Fetch all tasks which have at least one subTask with 'pending' status.
  */
 async function fetchTasksWithPendingSubTasks() {
-  return await TaskRecord.find({ 'subTask.status': 'pending' }).sort({ createdAt: -1 });
+  return await TaskRecord.find({}).sort({ createdAt: -1 });
 }
 
 
@@ -801,7 +447,7 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFi
       'recieverPartyName',
       'length',
       'MTR',
-      'Payment',
+      //'Payment', // Removed Payment
       'challanNo',
       'submitterName',
       'locationStatus',
@@ -850,7 +496,7 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFi
       recieverPartyName: submissionData.recieverPartyName,
       length: submissionData.length,
       MTR: submissionData.MTR,
-      Payment: submissionData.Payment,
+      //Payment: submissionData.Payment, // Removed Payment
       challanNo: submissionData.challanNo,
       challanPhotoPath: submissionData.challanPhotoPath,
       submitterName: submissionData.submitterName,
@@ -892,7 +538,7 @@ async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submi
       'recieverPartyName',
       'length',
       'MTR',
-      'Payment',
+      //'Payment', // Removed Payment
       'challanNo',
       'submitterName',
       'locationStatus',
@@ -956,7 +602,7 @@ async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submi
       recieverPartyName: submissionData.recieverPartyName,
       length: submissionData.length,
       MTR: submissionData.MTR,
-      Payment: submissionData.Payment,
+      //Payment: submissionData.Payment, // Removed Payment
       challanNo: submissionData.challanNo,
       challanPhotoPath, // Preserved/correctly set
       submitterName: submissionData.submitterName,
@@ -1033,6 +679,8 @@ async function fetchSubmissionOfSubTask(taskId, subTaskId, submissionIndex = und
 
 
 module.exports = {
+fetchDashboardFabricStats,
+
   fetchTaskDataSchemaFields,
   createTasks,
   editTask,

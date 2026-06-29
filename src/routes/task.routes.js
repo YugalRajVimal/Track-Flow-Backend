@@ -17,9 +17,15 @@ const {
   fetchSubmissionOfSubTaskController,
   deleteSubmissionOfSubTaskController,
   fetchTasksWithPendingSubTasksController,
+  fetchDashboardFabricStatsController,
 } = require('../controllers/task.controller');
 const { uploadFile } = require('../middleware/upload.middleware');
 const { uploadImage } = require('../middleware/imageUploadMiddlware');
+
+
+// Route to fetch dashboard fabric stats
+router.get('/dashboard/fabric-stats', fetchDashboardFabricStatsController);
+
 
 // Route to fetch task data schema config fields (dropdown options, etc.)
 router.get('/dropdowns', fetchTaskDataSchemaFieldsController);
