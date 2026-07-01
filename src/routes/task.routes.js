@@ -42,13 +42,14 @@ router.get('/', fetchTasksController);
 // Fetch a specific task by taskId as a query parameter (e.g., /api/tasks?taskId=1)
 router.get('/by-task-id', fetchTaskByTaskIdController);
 
+// Route to fetch all tasks that have at least one subTask with 'pending' status
+router.get('/with-pending-subtasks', fetchTasksWithPendingSubTasksController);
 
 // Delete a task by ID
 router.delete('/:taskId', deleteTaskController);
 
 
-// Route to fetch all tasks that have at least one subTask with 'pending' status
-router.get('/with-pending-subtasks', fetchTasksWithPendingSubTasksController);
+
 
 
 // SubTask routes

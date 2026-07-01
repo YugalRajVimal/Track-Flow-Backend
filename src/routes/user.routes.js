@@ -16,6 +16,6 @@ router.delete('/:id', authenticate, authorize('admin'), ctrl.deleteUser);
 router.patch('/:id/status', authenticate, authorize('admin'), ctrl.updateUserStatus);
 
 // Public route (no authentication/authorization)
-router.post('/verify-payment-department-passcode', authenticate, authorize('user'),  ctrl.verifyPaymentDepartmentPasscode);
+router.post('/verify-payment-department-passcode', authenticate, authorize('handler'),  ctrl.verifyPaymentDepartmentPasscode);
 
 module.exports = router;

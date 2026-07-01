@@ -402,21 +402,41 @@ const path = require('path');
  *   - partyName: string
  *   - fabricType: string
  */
+// async function fetchDashboardFabricStatsController(req, res) {
+//   try {
+//     const { dateRange, from, to, partyName, fabricType } = req.query;
+
+//     // Build filter object as expected by fetchDashboardFabricStats
+//     let filter = {};
+
+//     // Date filtering logic
+//     if (dateRange) {
+//       if (dateRange === "custom" && from && to) {
+//         filter.dateRange = { from, to };
+//       } else {
+//         // today, yesterday, last7days, last30days, thismonth
+//         filter.dateRange = dateRange;
+//       }
+//     }
+
+//     if (partyName) filter.partyName = partyName;
+//     if (fabricType) filter.fabricType = fabricType;
+
+//     const stats = await taskService.fetchDashboardFabricStats(filter);
+//     res.json({ success: true, data: stats });
+//   } catch (error) {
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// }
+
 async function fetchDashboardFabricStatsController(req, res) {
   try {
-    const { dateRange, from, to, partyName, fabricType } = req.query;
+    const { from, to, partyName, fabricType } = req.query;
 
-    // Build filter object as expected by fetchDashboardFabricStats
     let filter = {};
 
-    // Date filtering logic
-    if (dateRange) {
-      if (dateRange === "custom" && from && to) {
-        filter.dateRange = { from, to };
-      } else {
-        // today, yesterday, last7days, last30days, thismonth
-        filter.dateRange = dateRange;
-      }
+    if (from && to) {
+      filter.dateRange = { from, to };
     }
 
     if (partyName) filter.partyName = partyName;
@@ -510,18 +530,50 @@ async function editTaskController(req, res) {
 
 
 /**
- * Controller to fetch single or multiple tasks.
+ * Controller to fetch single or multiple tasks with filters and pagination.
+ * Supported filters: from, to (date range on createdAt), partyName, transportName,
+ * receiverName, fabricType, page, pageSize.
  */
 async function fetchTasksController(req, res) {
   try {
-    const filter = { ...req.query };
+    const {
+      dateFrom,
+      dateTo,
+      partyName,
+      transportName,
+      receiverName,
+      fabricType,
+      page,
+      pageSize,
+      taskId,
+      ...rest
+    } = req.query;
+
+    // Compose filters as per task.service.js
+    const filter = {
+      ...(dateFrom ? { dateFrom } : {}),
+      ...(dateTo ? { dateTo } : {}),
+      ...(partyName ? { partyName } : {}),
+      ...(transportName ? { transportName } : {}),
+      ...(receiverName ? { receiverName } : {}),
+      ...(fabricType ? { fabricType } : {}),
+      ...(page ? { page } : {}),
+      ...(pageSize ? { pageSize } : {}),
+      ...(taskId ? { taskId } : {}),
+      ...rest, // any other filters
+    };
+
     const result = await taskService.fetchTasks(filter);
-    res.json({ success: true, data: result });
+
+    // result shape (see service): { data, total, page, pageSize, totalPages }
+    res.json({
+      success: true,
+      ...result, // flatten the pagination fields for easier access
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 }
-
 
 /**
  * Controller to fetch a task by its taskId (query param or route param).
@@ -542,6 +594,54 @@ async function fetchTaskByTaskIdController(req, res) {
   }
 }
 
+/**
+ * Controller to fetch all tasks that have at least one subTask with 'pending' status,
+ * supports filtering and pagination based on query parameters.
+ */
+async function fetchTasksWithPendingSubTasksController(req, res) {
+  try {
+    const {
+      fromdate,
+      toDate,
+      partyName,
+      transportName,
+      receiverName,
+      fabricType,
+      programName,
+      jigarNo,
+      page,
+      pageSize,
+      ...rest // pass through any extra query filters
+    } = req.query;
+
+    // Compose filters per fetchTasksWithPendingSubTasks signature
+    const filters = {
+      ...(fromdate ? { fromdate } : {}),
+      ...(toDate ? { toDate } : {}),
+      ...(partyName ? { partyName } : {}),
+      ...(transportName ? { transportName } : {}),
+      ...(receiverName ? { receiverName } : {}),
+      ...(fabricType ? { fabricType } : {}),
+      ...(programName ? { programName } : {}),
+      ...(jigarNo ? { jigarNo } : {}),
+      ...(page ? { page } : {}),
+      ...(pageSize ? { pageSize } : {}),
+      ...rest,
+    };
+
+    const result = await taskService.fetchTasksWithPendingSubTasks(filters);
+
+    // result shape: { data, total, page, pageSize, totalPages }
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+
 
 /**
  * Controller to delete a task by taskId.
@@ -556,18 +656,6 @@ async function deleteTaskController(req, res) {
   }
 }
 
-
-/**
- * Controller to fetch all tasks that have at least one subTask with 'pending' status.
- */
-async function fetchTasksWithPendingSubTasksController(req, res) {
-  try {
-    const tasks = await taskService.fetchTasksWithPendingSubTasks();
-    res.json({ success: true, data: tasks });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-}
 
 
 /**
@@ -646,9 +734,9 @@ async function addSubmissionToSubTaskController(req, res) {
 
     // Ensure correct value for locationStatus ('warehouse' or 'missing') if present
     if (submissionData.locationStatus !== undefined) {
-      const allowedStatuses = ['warehouse', 'missing'];
+      const allowedStatuses = ['warehouse', 'missing','savedSinkage'];
       if (!allowedStatuses.includes(submissionData.locationStatus)) {
-        return res.status(400).json({ success: false, message: "Invalid 'locationStatus' value. Must be 'warehouse' or 'missing'." });
+        return res.status(400).json({ success: false, message: "Invalid 'locationStatus' value. Must be 'warehouse' or 'missing' or 'savedSinkage'." });
       }
     }
 
@@ -693,9 +781,9 @@ async function editSubmissionOfSubTaskController(req, res) {
 
     // Validate the new locationStatus if present
     if (submissionData.locationStatus !== undefined) {
-      const allowedStatuses = ['warehouse', 'missing'];
+      const allowedStatuses = ['warehouse', 'missing','savedSinkage'];
       if (!allowedStatuses.includes(submissionData.locationStatus)) {
-        return res.status(400).json({ success: false, message: "Invalid 'locationStatus' value. Must be 'warehouse' or 'missing'." });
+        return res.status(400).json({ success: false, message: "Invalid 'locationStatus' value. Must be 'warehouse' or 'missing' or 'savedSinkage'." });
       }
     }
 

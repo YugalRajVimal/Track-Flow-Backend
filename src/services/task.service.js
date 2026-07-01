@@ -22,38 +22,38 @@ async function fetchDashboardFabricStats(filter = {}) {
     fabricType = null
   } = filter || {};
 
-  // 1. Build date filter for Mongo `_createdAt` (or fallback to createdAt/updatedAt)
+  // 1. Build date filter for Mongo `createdAt`
   let dateQuery = {};
   if (dateRange) {
     let from, to;
     const today = new Date();
-    today.setHours(0,0,0,0);
+    today.setHours(0, 0, 0, 0);
 
     if (typeof dateRange === 'string') {
-      switch(dateRange) {
+      switch (dateRange) {
         case 'today':
           from = new Date(today);
           to = new Date(today);
-          to.setHours(23,59,59,999);
+          to.setHours(23, 59, 59, 999);
           break;
         case 'yesterday':
           from = new Date(today);
           from.setDate(from.getDate() - 1);
           to = new Date(today);
           to.setDate(to.getDate() - 1);
-          to.setHours(23,59,59,999);
+          to.setHours(23, 59, 59, 999);
           break;
         case 'last7days':
           from = new Date(today);
           from.setDate(from.getDate() - 6);
           to = new Date(today);
-          to.setHours(23,59,59,999);
+          to.setHours(23, 59, 59, 999);
           break;
         case 'last30days':
           from = new Date(today);
           from.setDate(from.getDate() - 29);
           to = new Date(today);
-          to.setHours(23,59,59,999);
+          to.setHours(23, 59, 59, 999);
           break;
         case 'thismonth':
           from = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -65,7 +65,7 @@ async function fetchDashboardFabricStats(filter = {}) {
     } else if (typeof dateRange === 'object' && dateRange.from && dateRange.to) {
       from = new Date(dateRange.from);
       to = new Date(dateRange.to);
-      to.setHours(23,59,59,999);
+      to.setHours(23, 59, 59, 999);
     }
 
     if (from && to) {
@@ -78,7 +78,6 @@ async function fetchDashboardFabricStats(filter = {}) {
   if (partyName) recordMatch.partyName = partyName;
   if (fabricType) recordMatch.FabricType = fabricType;
 
-  // Add dateQuery into recordMatch for querying TaskRecord
   recordMatch = { ...recordMatch, ...dateQuery };
 
   // 3. Fetch filtered TaskRecords
@@ -90,113 +89,127 @@ async function fetchDashboardFabricStats(filter = {}) {
       Length: 1,
       taskId: 1,
       _id: 0,
+      MTR: 1,
     }
   );
-  console.log('[Dashboard] Fetched TaskRecords:', allTaskRecords.length, 'Filter:', recordMatch);
 
   let totalFabricIn = 0;
+  let totalFabricInL100 = 0;
   let totalFabricInProcessing = 0;
-  let totalFabricSubmitted = 0;
   let totalFabricMissing = 0;
+  let totalFabricInSubmission = 0;
+  let totalFabricInSubmissionL100 = 0;
+  let savedSinkage = 0;
+  let totalMTRShort = 0;
 
   for (const rec of allTaskRecords) {
     const taskSinkage = Number(rec.sinkage) || 0;
     const taskLength = Number(rec.Length) || 0;
     const subTasks = Array.isArray(rec.subTask) ? rec.subTask : [];
 
-    for (const subTask of subTasks) {
-      // Extra filter: Filter subTask by partyName/fabricType if present in subTask (for some use cases)
-      // (skip for now: records are already filtered at parent level)
+    // Only sum up task-level MTR for totalFabricIn (do not include subTask.mtr)
+    const recMTR = Number(rec.MTR) || 0;
+    totalFabricIn += recMTR;
+    if (!isNaN(recMTR) && !isNaN(taskLength)) {
+      totalFabricInL100 += (recMTR * (taskLength / 100));
+    }
 
-      const subTaskId = subTask.subTaskId || subTask._id || "-";
-      const subTaskMtr = Number(subTask.mtr) || 0;
+    if (subTasks.length === 0) {
+      // If no subTasks, do not add to totalFabricInProcessing
+    } else {
+      for (const subTask of subTasks) {
+        const subTaskId = subTask.subTaskId || subTask._id || "-";
+        const subTaskMtr = Number(subTask.mtr) || 0;
+        const subTaskMtrShort = Number(subTask.mtrShort) || 0;
 
-      // A. sum all subTask.mtr for totalFabricIn
-      totalFabricIn += subTaskMtr;
-      console.log(
-        `[Dashboard] Task=${rec.taskId} SubTask=${subTaskId} mtr=${subTaskMtr} (totalFabricIn running sum: ${totalFabricIn})`
-      );
-
-      // B. Processing status: see logic
-      let status = subTask.status || "";
-      let isProcessing = false;
-      if (
-        status === "processing" ||
-        status === "pending" ||
-        status === "in_progress"
-      ) {
-        isProcessing = true;
-      } else if (
-        (!subTask.submission || subTask.submission.length === 0) &&
-        !status
-      ) {
-        isProcessing = true;
-      }
-      if (isProcessing) {
+        totalMTRShort += subTaskMtrShort;
         totalFabricInProcessing += subTaskMtr;
-        console.log(
-          `  [Dashboard] SubTask ${subTaskId} counted as processing (status=${status}). Added ${subTaskMtr} (sum: ${totalFabricInProcessing})`
-        );
-      }
 
-      // Submission(s)
-      let submissionsArr = [];
-      if (Array.isArray(subTask.submission)) {
-        submissionsArr = subTask.submission;
-      } else if (subTask.submission) {
-        submissionsArr = [subTask.submission];
-      }
+        // 4. Submissions/Submission arrays
+        let submissionsArr = [];
+        if (Array.isArray(subTask.submission)) {
+          submissionsArr = subTask.submission;
+        } else if (subTask.submission) {
+          submissionsArr = [subTask.submission];
+        }
 
-      let sumSubmissionMTR = 0;
-      let hasMissing = false;
+        let submissionMTRSum = 0;
+        let submissionMTRL100Sum = 0;
 
-      for (const submission of submissionsArr) {
-        const submissionMTR = Number(submission.MTR) || 0;
-        sumSubmissionMTR += submissionMTR;
-        if (submission.locationStatus === "missing") hasMissing = true;
-      }
-      totalFabricSubmitted += sumSubmissionMTR;
-      console.log(
-        `  [Dashboard] SubTask ${subTaskId} submissions: count=${submissionsArr.length}, sumSubmissionMTR=${sumSubmissionMTR}, hasMissing=${hasMissing} (totalFabricSubmitted=${totalFabricSubmitted})`
-      );
+        // For missing calculation
+        let hasMissing = false;
 
-      // Missing: if any submission marked missing
-      if (
-        hasMissing &&
-        typeof subTask.mtr !== "undefined" &&
-        typeof rec.sinkage !== "undefined" &&
-        typeof rec.Length !== "undefined"
-      ) {
-        const mtrRaw = Number(subTask.mtr);
-        const sinkagePercent = Number(rec.sinkage) || 0;
-        const lengthPercent = Number(rec.Length) || 0;
-        const lengthLossPercent = 100 - lengthPercent;
-        const totalPercent = sinkagePercent + lengthLossPercent;
-        // from SubmissionManagement.jsx: mtrAfter = mtr - (mtr * totalPercent / 100)
-        const mtrAfterLengthSinkage =
-          mtrRaw - (mtrRaw * totalPercent) / 100;
-        const missingForSubTask = Math.max(mtrAfterLengthSinkage - sumSubmissionMTR, 0);
+        // 6. Saved Sinkage collection
+        for (const submission of submissionsArr) {
+          const submissionMTR = Number(submission.MTR) || 0;
+          const submissionLength = Number(submission.length) || 0;
 
-        totalFabricMissing += missingForSubTask;
-        console.log(
-          `    [Dashboard] SubTask ${subTaskId}: missing calculation (mtrAfterLengthSinkage=${mtrAfterLengthSinkage}, submissionSum=${sumSubmissionMTR}, missingForSubTask=${missingForSubTask}) (Running totalFabricMissing=${totalFabricMissing})`
-        );
+          // Total Fabric In Submission = sum of Submission MTR
+          submissionMTRSum += submissionMTR;
+
+          // SubmissionMTR(L100): = submissionMTR - (100 - submissionLength)%
+          // This is: submissionMTR * (submissionLength / 100)
+          let submissionMTRL100 = 0;
+          if (!isNaN(submissionMTR) && !isNaN(submissionLength)) {
+            submissionMTRL100 = submissionMTR * (submissionLength / 100);
+            submissionMTRL100Sum += submissionMTRL100;
+          }
+
+          // Saved Sinkage
+          if (submission.locationStatus === "savedSinkage") {
+            const ssval = Number(submission.savedSinkage) || 0;
+            savedSinkage += ssval;
+          }
+
+          // For missing
+          if (submission.locationStatus === "missing") {
+            hasMissing = true;
+          }
+        }
+
+        // Add to global totals
+        totalFabricInSubmission += submissionMTRSum;
+        totalFabricInSubmissionL100 += submissionMTRL100Sum;
+
+        // 7. Total Fabric Missing
+        // For each subTask where any submission locationStatus === 'missing'
+        // totalFabricMissing += (subTaskMTR - taskSinkage%) - sum(all SubmissionMTR(L100))
+        if (hasMissing) {
+          // Calculate (subTaskMtr - taskSinkage%)
+          // Sinkage is in %, so reduce sinkage% of subTaskMtr
+          let subTaskMtrAfterSinkage = subTaskMtr;
+          if (!isNaN(subTaskMtr) && !isNaN(taskSinkage)) {
+            subTaskMtrAfterSinkage = subTaskMtr * (1 - (taskSinkage / 100));
+          }
+
+          // submissionMTRL100Sum is already the sum of all SubmissionMTR(L100)
+          let missing = subTaskMtrAfterSinkage - submissionMTRL100Sum;
+          if (missing < 0) missing = 0;
+          totalFabricMissing += missing;
+
+          // Optional log for debugging:
+          console.log("Fabric missing calculation:", {
+            subTaskMtr,
+            taskSinkage,
+            subTaskMtrAfterSinkage,
+            submissionMTRL100Sum,
+            missing,
+            totalFabricMissing,
+          });
+        }
       }
     }
   }
 
-  // Final totals
-  console.log("[Dashboard] Results:");
-  console.log("  totalFabricIn:", totalFabricIn);
-  console.log("  totalFabricInProcessing:", totalFabricInProcessing);
-  console.log("  totalFabricSubmitted:", totalFabricSubmitted);
-  console.log("  totalFabricMissing:", totalFabricMissing);
-
   return {
-    totalFabricIn,
-    totalFabricInProcessing,
-    totalFabricSubmitted,
+    totalFabricIn: Number(totalFabricIn.toFixed(2)),
+    totalFabricInL100: Number(totalFabricInL100.toFixed(2)),
+    totalFabricInProcessing: Number(totalFabricInProcessing.toFixed(2)),
+    totalFabricInSubmission: Number(totalFabricInSubmission.toFixed(2)),
+    totalFabricInSubmissionL100: Number(totalFabricInSubmissionL100.toFixed(2)),
     totalFabricMissing: Number(totalFabricMissing.toFixed(2)),
+    savedSinkage: Number(savedSinkage.toFixed(2)),
+    totalMTRShort: Number(totalMTRShort.toFixed(2)),
   };
 }
 
@@ -280,11 +293,101 @@ async function editTask(taskId, updateData) {
 
 
 /**
- * Fetch tasks (single by taskId or multiple with filter).
+ * Fetch tasks (single by taskId or multiple with filter, including date, partyName, transportName, receiverName, fabricType).
+ * Supports pagination: { page, pageSize }
+ * Filters:
+ *   - from, to: (ISO strings representing date range, matched on createdAt)
+ *   - partyName, transportName, receiverName, fabricType: (string; partial/case-insensitive match)
  */
 async function fetchTasks(filter = {}) {
-  if (filter.taskId) return await TaskRecord.findOne({ taskId: filter.taskId });
-  return await TaskRecord.find(filter).sort({ createdAt: -1 });
+  const {
+    taskId,
+    dateFrom,
+    dateTo,
+    partyName,
+    transportName,
+    receiverName,
+    fabricType,
+    page = 1,
+    pageSize = 10,
+  } = filter;
+
+  // Debug/filter checks
+  console.log('[fetchTasks] filter:', filter);
+
+  if (taskId) {
+    const total = await TaskRecord.countDocuments({ taskId });
+    const results = await TaskRecord.find({ taskId });
+    return {
+      data: results,
+      total,
+      page: 1,
+      pageSize: results.length,
+      totalPages: 1,
+    };
+  }
+
+  const andQueries = [];
+
+  // Date range filter (createdAt)
+  if (dateFrom || dateTo) {
+    const dateQuery = {};
+    if (dateFrom) dateQuery.$gte = new Date(dateFrom);
+    if (dateTo) dateQuery.$lte = new Date(dateTo);
+    andQueries.push({ createdAt: dateQuery });
+    console.log('[fetchTasks] Date filter:', dateQuery);
+  }
+
+  // Party Name filter (case-insensitive partial match)
+  if (partyName) {
+    andQueries.push({ partyName: { $regex: partyName, $options: 'i' } });
+    console.log('[fetchTasks] Party name filter:', partyName);
+  }
+
+  // Transport Name filter
+  if (transportName) {
+    andQueries.push({ transportName: { $regex: transportName, $options: 'i' } });
+    console.log('[fetchTasks] Transport name filter:', transportName);
+  }
+
+  // Receiver Name filter
+  if (receiverName) {
+    andQueries.push({ receiverName: { $regex: receiverName, $options: 'i' } });
+    console.log('[fetchTasks] Receiver name filter:', receiverName);
+  }
+
+  // FabricType filter
+  if (fabricType) {
+    andQueries.push({ FabricType: { $regex: fabricType, $options: 'i' } });
+    console.log('[fetchTasks] FabricType filter:', fabricType);
+  }
+
+  // Combine queries
+  let query = andQueries.length > 0 ? { $and: andQueries } : {};
+
+  // Pagination calculation
+  const skip = (Math.max(Number(page), 1) - 1) * Math.max(Number(pageSize), 1);
+  const limit = Math.max(Number(pageSize), 1);
+
+  console.log('[fetchTasks] query:', JSON.stringify(query));
+  console.log(`[fetchTasks] Pagination: skip=${skip}, limit=${limit}`);
+
+  // Results with pagination and newest first
+  const total = await TaskRecord.countDocuments(query);
+  const results = await TaskRecord.find(query)
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
+
+  console.log(`[fetchTasks] Results: returned=${results.length}, total=${total}`);
+
+  return {
+    data: results,
+    total,
+    page: Number(page),
+    pageSize: Number(pageSize),
+    totalPages: Math.ceil(total / Number(pageSize) || 1),
+  };
 }
 
 
@@ -298,10 +401,94 @@ async function fetchByTaskId(taskId) {
 
 
 /**
- * Fetch all tasks which have at least one subTask with 'pending' status.
+ * Fetch all tasks which have at least one subTask with 'pending' status, with filters and pagination.
+ * Filters:
+ *   - dateFrom: ISO date string (filter by createdAt >= dateFrom)
+ *   - dateTo: ISO date string (filter by createdAt <= dateTo)
+ *   - partyName: main partyName (case-insensitive substring match)
+ *   - transportName: transportName field (case-insensitive substring match)
+ *   - receiverName: receiverName field (case-insensitive substring match)
+ *   - fabricType: FabricType field (case-insensitive substring match)
+ *   - programName: filter if at least one subTask.program matches this (case-insensitive substring match)
+ *   - jigarNo: filter if at least one subTask.jigarNo matches this (case-insensitive substring match)
+ *   - page, pageSize: pagination control
  */
-async function fetchTasksWithPendingSubTasks() {
-  return await TaskRecord.find({}).sort({ createdAt: -1 });
+async function fetchTasksWithPendingSubTasks({
+  dateFrom,
+  dateTo,
+  partyName,
+  transportName,
+  receiverName,
+  fabricType,
+  programName,
+  jigarNo,
+  page = 1,
+  pageSize = 20,
+} = {}) {
+  const andQueries = [];
+
+
+
+  // Date filter (createdAt)
+  if (dateFrom || dateTo) {
+    const dateQuery = {};
+    if (dateFrom) dateQuery.$gte = new Date(dateFrom);
+    if (dateTo) dateQuery.$lte = new Date(dateTo);
+    andQueries.push({ createdAt: dateQuery });
+  }
+
+  // Party Name filter
+  if (partyName) {
+    andQueries.push({ partyName: { $regex: partyName, $options: 'i' } });
+  }
+
+  // Transport Name filter
+  if (transportName) {
+    andQueries.push({ transportName: { $regex: transportName, $options: 'i' } });
+  }
+
+  // Receiver Name filter
+  if (receiverName) {
+    andQueries.push({ receiverName: { $regex: receiverName, $options: 'i' } });
+  }
+
+  // Fabric Type filter
+  if (fabricType) {
+    andQueries.push({ FabricType: { $regex: fabricType, $options: 'i' } });
+  }
+
+  // programName in subTask
+  if (programName) {
+    andQueries.push({ 'subTask': { $elemMatch: { program: { $regex: programName, $options: 'i' } } } });
+  }
+
+  // jigarNo in subTask
+  if (jigarNo) {
+    andQueries.push({ 'subTask': { $elemMatch: { jigarNo: { $regex: jigarNo, $options: 'i' } } } });
+  }
+
+  const query = andQueries.length > 0 ? { $and: andQueries } : {};
+
+  // Pagination
+  const safePage = Math.max(Number(page) || 1, 1);
+  const safePageSize = Math.max(Number(pageSize) || 20, 1);
+  const skip = (safePage - 1) * safePageSize;
+  const limit = safePageSize;
+
+  // Query
+  const total = await TaskRecord.countDocuments(query);
+  const results = await TaskRecord.find(query)
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
+
+  return {
+    data: results,
+    total,
+    page: safePage,
+    pageSize: safePageSize,
+    totalPages: Math.ceil(total / safePageSize) || 1,
+  };
 }
 
 
@@ -430,11 +617,12 @@ async function deleteSubTask(taskId, subTaskIndex) {
 /**
  * Add a new submission to a subTask.
  *
- * All fields in the submission are mandatory, INCLUDING locationStatus ('warehouse' | 'missing').
+ * All fields in the submission are mandatory, INCLUDING locationStatus ('warehouse' | 'missing' | 'savedSinkage').
  * challanNo must be unique across ALL submissions in this TaskRecord.
  *
  * Reads challanPhotoPath from submissionData.challanPhotoPath (controller now correctly sets this field).
  * Reads locationStatus (required; enum per @TaskRecord.js 44-48).
+ * If locationStatus is 'savedSinkage', saves savedSinkage number as well (optional, but must be present if locationStatus === 'savedSinkage').
  */
 async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFile = null) {
   console.log(submissionData);
@@ -462,10 +650,35 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFi
       }
     }
 
-    // Validate locationStatus enum (warehouse/missing)
-    const allowedStatuses = ['warehouse', 'missing'];
+    // Validate locationStatus enum (warehouse/missing/savedSinkage)
+    const allowedStatuses = ['warehouse', 'missing', 'savedSinkage'];
     if (!allowedStatuses.includes(submissionData.locationStatus)) {
-      throw new Error("Invalid 'locationStatus'. Must be either 'warehouse' or 'missing'.");
+      throw new Error("Invalid 'locationStatus'. Must be 'warehouse', 'missing', or 'savedSinkage'.");
+    }
+
+    // If locationStatus is 'savedSinkage', savedSinkage number must be present and valid
+    let submission = {
+      fabricPartyName: submissionData.fabricPartyName,
+      recieverPartyName: submissionData.recieverPartyName,
+      length: submissionData.length,
+      MTR: submissionData.MTR,
+      //Payment: submissionData.Payment, // Removed Payment
+      challanNo: submissionData.challanNo,
+      challanPhotoPath: submissionData.challanPhotoPath,
+      submitterName: submissionData.submitterName,
+      locationStatus: submissionData.locationStatus, // Include locationStatus per @TaskRecord.js 44-48
+    };
+
+    if (submissionData.locationStatus === 'savedSinkage') {
+      // savedSinkage is required and must be a number
+      if (
+        typeof submissionData.savedSinkage === 'undefined' ||
+        submissionData.savedSinkage === null ||
+        isNaN(Number(submissionData.savedSinkage))
+      ) {
+        throw new Error('savedSinkage is required and must be a valid number when locationStatus is "savedSinkage".');
+      }
+      submission.savedSinkage = Number(submissionData.savedSinkage);
     }
 
     // challanPhotoPath is required for new submissions
@@ -491,18 +704,6 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFi
     const subTask = taskRecord.subTask.find((s) => s.subTaskId === subTaskId);
     if (!subTask) throw new Error('SubTask not found');
 
-    const submission = {
-      fabricPartyName: submissionData.fabricPartyName,
-      recieverPartyName: submissionData.recieverPartyName,
-      length: submissionData.length,
-      MTR: submissionData.MTR,
-      //Payment: submissionData.Payment, // Removed Payment
-      challanNo: submissionData.challanNo,
-      challanPhotoPath: submissionData.challanPhotoPath,
-      submitterName: submissionData.submitterName,
-      locationStatus: submissionData.locationStatus, // Include locationStatus per @TaskRecord.js 44-48
-    };
-
     if (!Array.isArray(subTask.submission)) subTask.submission = [];
     subTask.submission.push(submission);
 
@@ -518,7 +719,8 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFi
 /**
  * Edit an existing submission for a subTask.
  *
- * Accepts and updates 'locationStatus' (warehouse/missing) as per @TaskRecord.js 44-48.
+ * Accepts and updates 'locationStatus' ('warehouse' | 'missing' | 'savedSinkage') as per @TaskRecord.js 44-48.
+ * If changing or setting to 'savedSinkage', also expects and saves savedSinkage number.
  * FIX 1: submissionIndex is now correctly received from the controller.
  * FIX 2: when no new file is uploaded and no challanPhotoPath is sent in the body,
  *         the existing stored challanPhotoPath is preserved (not overwritten with undefined).
@@ -553,10 +755,10 @@ async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submi
       }
     }
 
-    // Validate locationStatus enum (warehouse/missing)
-    const allowedStatuses = ['warehouse', 'missing'];
+    // Validate locationStatus enum (warehouse/missing/savedSinkage)
+    const allowedStatuses = ['warehouse', 'missing', 'savedSinkage'];
     if (!allowedStatuses.includes(submissionData.locationStatus)) {
-      throw new Error("Invalid 'locationStatus'. Must be either 'warehouse' or 'missing'.");
+      throw new Error("Invalid 'locationStatus'. Must be 'warehouse', 'missing', or 'savedSinkage'.");
     }
 
     const taskRecord = await TaskRecord.findOne({ taskId });
@@ -597,6 +799,7 @@ async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submi
       throw new Error('challanPhotoPath is required — provide a new photo or ensure an existing one is on record');
     }
 
+    // Build updated submission, handle savedSinkage
     const updatedSubmission = {
       fabricPartyName: submissionData.fabricPartyName,
       recieverPartyName: submissionData.recieverPartyName,
@@ -608,6 +811,17 @@ async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submi
       submitterName: submissionData.submitterName,
       locationStatus: submissionData.locationStatus, // Include/update locationStatus
     };
+
+    if (submissionData.locationStatus === 'savedSinkage') {
+      if (
+        typeof submissionData.savedSinkage === 'undefined' ||
+        submissionData.savedSinkage === null ||
+        isNaN(Number(submissionData.savedSinkage))
+      ) {
+        throw new Error('savedSinkage is required and must be a valid number when locationStatus is "savedSinkage".');
+      }
+      updatedSubmission.savedSinkage = Number(submissionData.savedSinkage);
+    }
 
     subTask.submission[submissionIndex] = updatedSubmission;
     await taskRecord.save();

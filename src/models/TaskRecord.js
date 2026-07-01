@@ -39,8 +39,12 @@ const submissionSchema = new mongoose.Schema(
     // Added new field for enum warehouse/missing
     locationStatus: {
       type: String,
-      enum: ['warehouse', 'missing'],
+      enum: ['warehouse', 'missing', 'savedSinkage'],
       required: true,
+    },
+    savedSinkage: {
+      type: Number,
+      required: false
     }
   },
   { _id: false }
