@@ -209,16 +209,31 @@ async function updateColorChemical(req, res) {
 
 /**
  * GET /color-chemicals
- * Return a paginated list of ColorChemicals.
+ * Return a paginated list of ColorChemicals, supports text search filters.
  */
 async function getColorChemicals(req, res) {
   try {
+    // Extract pagination & sort options
     const options = {
       skip: parseInt(req.query.skip, 10) || 0,
       limit: parseInt(req.query.limit, 10) || 50,
       sort: req.query.sort ? JSON.parse(req.query.sort) : { createdAt: -1 },
     };
-    const colorChemicals = await fetchColorChemicals({}, options);
+
+    // Build filter object for text and exact search
+    const filter = {};
+    if (req.query.receiverName) filter.receiverName = req.query.receiverName;
+    if (req.query.shopName) filter.shopName = req.query.shopName;
+    if (req.query.challanNo) filter.challanNo = req.query.challanNo;
+
+    // Allow other filters (e.g. for future extensibility)
+    for (const key of Object.keys(req.query)) {
+      if (!['skip', 'limit', 'sort', 'receiverName', 'shopName', 'challanNo'].includes(key) && req.query[key] !== undefined && req.query[key] !== '') {
+        filter[key] = req.query[key];
+      }
+    }
+
+    const colorChemicals = await fetchColorChemicals(filter, options);
     res.json(colorChemicals);
   } catch (error) {
     res.status(400).json({ error: error.message });

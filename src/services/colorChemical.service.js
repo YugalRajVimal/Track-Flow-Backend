@@ -127,7 +127,28 @@ async function editColorChemical(id, updateData) {
  */
 async function fetchColorChemicals(filter = {}, options = {}) {
   const { skip = 0, limit = 50, sort = { createdAt: -1 } } = options;
-  return ColorChemical.find(filter).skip(skip).limit(limit).sort(sort);
+  const query = {};
+
+  // Text search filters for receiverName, shopName, challanNo (case-insensitive, partial match)
+  if (filter.receiverName) {
+    query.receiverName = { $regex: filter.receiverName, $options: 'i' };
+  }
+  if (filter.shopName) {
+    query.shopName = { $regex: filter.shopName, $options: 'i' };
+  }
+  if (filter.challanNo) {
+    query.challanNo = { $regex: filter.challanNo, $options: 'i' };
+  }
+
+  // Support additional filters passed (like date, etc)
+  // Spread other non-empty filter keys into the main query if needed
+  for (const key of Object.keys(filter)) {
+    if (!['receiverName', 'shopName', 'challanNo'].includes(key) && filter[key] !== undefined && filter[key] !== '') {
+      query[key] = filter[key];
+    }
+  }
+
+  return ColorChemical.find(query).skip(skip).limit(limit).sort(sort);
 }
 
 /**
