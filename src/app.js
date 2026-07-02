@@ -24,7 +24,8 @@ const taskRoutes = require('./routes/task.routes');
 const submissionPaymentDataRoutes = require('./routes/submissionPaymentData.routes');
 const paymentRecordRoutes = require('./routes/paymentRecord.routes');
 const paymentDataRoutes = require('./routes/paymentData.routes');
-const colorChemicalRoutes = require('./routes/colorChemical.routes'); // <-- ADDED
+const colorChemicalRoutes = require('./routes/colorChemical.routes');
+const colorChemicalDataRoutes = require('./routes/colorChemicalDataRoutes'); // <-- ADDED
 
 const app = express();
 
@@ -117,6 +118,9 @@ app.use(`${API_PREFIX}/payment-data`, paymentDataRoutes);
 
 // Add new colorChemical routes
 app.use(`${API_PREFIX}/color-chemicals`, colorChemicalRoutes);
+
+// Add new colorChemicalData routes
+app.use(`${API_PREFIX}/color-chemical-data`, colorChemicalDataRoutes);
 
 // ─── Error Handling ─────────────────────────────────────────────────────────
 app.use(notFound);
