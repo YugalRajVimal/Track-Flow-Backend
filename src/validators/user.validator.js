@@ -1,5 +1,7 @@
 const { body } = require('express-validator');
 
+const ROLE_LIST = ['admin', 'user', 'handler', 'printing-handler'];
+
 const createUserValidator = [
   body('name').notEmpty().withMessage('Name is required').trim(),
   body('email')
@@ -13,7 +15,7 @@ const createUserValidator = [
     .matches(/^\d{5}$/).withMessage('Passcode must be exactly 5 digits'),
   body('role')
     .optional()
-    .isIn(['admin', 'user', 'handler']).withMessage('Role must be admin, user, or handler'),
+    .isIn(ROLE_LIST).withMessage('Role must be admin, user, handler, or printing-handler'),
 ];
 
 const updateUserValidator = [
@@ -29,7 +31,7 @@ const updateUserValidator = [
     .matches(/^\d{5}$/).withMessage('Passcode must be exactly 5 digits'),
   body('role')
     .optional()
-    .isIn(['admin', 'user', 'handler']).withMessage('Role must be admin, user, or handler'),
+    .isIn(ROLE_LIST).withMessage('Role must be admin, user, handler, or printing-handler'),
 ];
 
 module.exports = { createUserValidator, updateUserValidator };

@@ -17,5 +17,7 @@ router.patch('/:id/status', authenticate, authorize('admin'), ctrl.updateUserSta
 
 // Public route (no authentication/authorization)
 router.post('/verify-payment-department-passcode', authenticate, authorize('handler'),  ctrl.verifyPaymentDepartmentPasscode);
+router.post('/printing/verify-payment-department-passcode', authenticate, authorize('printing-handler'),  ctrl.verifyPaymentDepartmentPasscode);
+
 
 module.exports = router;

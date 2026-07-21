@@ -1,17 +1,15 @@
 const mongoose = require('mongoose');
 
-// Schema for Task Data dropdown and essential fields (all as arrays)
+// Schema for Printing Task Data dropdown and essential fields (all as arrays)
 
-const taskDataSchema = new mongoose.Schema(
+const printingTaskDataSchema = new mongoose.Schema(
   {
     // Implement a taskId counter via auto-increment
     taskIdCounter: {
       type: Number,
-
     },
     subTaskIdCounter: {
       type: Number,
-
     },
     partyName: [
       { type: String, trim: true, required: true }
@@ -50,4 +48,4 @@ const taskDataSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('TaskData', taskDataSchema);
+module.exports = mongoose.model('PrintingTaskData', printingTaskDataSchema);

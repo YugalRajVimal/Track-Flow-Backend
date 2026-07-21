@@ -27,6 +27,20 @@ const paymentDataRoutes = require('./routes/paymentData.routes');
 const colorChemicalRoutes = require('./routes/colorChemical.routes');
 const colorChemicalDataRoutes = require('./routes/colorChemicalDataRoutes'); // <-- ADDED
 
+// Printing-specific routes
+const printingTaskRoutes = require('./routes/printing/printingTask.routes');
+
+const printingSubmissionPaymentDataRoutes = require('./routes/printing/printingSubmissionPaymentData.routes');
+const printingTaskDataRoutes = require('./routes/printing/printingTaskData.routes');
+const printingPaymentDataRoutes = require('./routes/printing/printingPaymentData.routes');
+const printingColorChemicalDataRoutes = require('./routes/printing/printingColorChemicalDataRoutes');
+
+const printingColorChemicalRoutes = require('./routes/printing/printingColorChemical.routes');
+const printingPaymentRecordRoutes = require('./routes/printing/printingPaymentRecord.routes');
+
+
+
+
 const app = express();
 
 // ─── Security Middleware ────────────────────────────────────────────────────
@@ -104,23 +118,36 @@ app.use(`${API_PREFIX}/audit-logs`, auditLogRoutes);
 app.use(`${API_PREFIX}/export`, exportRoutes);
 app.use(`${API_PREFIX}/offline`, offlineRoutes);
 app.use(`${API_PREFIX}/offline-data`, offlineDataRoutes);
-app.use(`${API_PREFIX}/task-data`, taskDataRoutes);
+
 app.use(`${API_PREFIX}/tasks`, taskRoutes);
+// Add new colorChemical routes
+app.use(`${API_PREFIX}/color-chemicals`, colorChemicalRoutes);
+// Add new paymentRecord routes
+app.use(`${API_PREFIX}/payment-records`, paymentRecordRoutes);
 
 // Add new submissionPaymentData routes
 app.use(`${API_PREFIX}/submission-payment-data`, submissionPaymentDataRoutes);
 
-// Add new paymentRecord routes
-app.use(`${API_PREFIX}/payment-records`, paymentRecordRoutes);
-
+app.use(`${API_PREFIX}/task-data`, taskDataRoutes);
 // Add new paymentData routes
 app.use(`${API_PREFIX}/payment-data`, paymentDataRoutes);
-
-// Add new colorChemical routes
-app.use(`${API_PREFIX}/color-chemicals`, colorChemicalRoutes);
-
 // Add new colorChemicalData routes
 app.use(`${API_PREFIX}/color-chemical-data`, colorChemicalDataRoutes);
+
+app.use(`${API_PREFIX}/printing/tasks`, printingTaskRoutes);
+
+// Add new submissionPaymentData routes
+app.use(`${API_PREFIX}/printing/submission-payment-data`, printingSubmissionPaymentDataRoutes);
+
+app.use(`${API_PREFIX}/printing/task-data`, printingTaskDataRoutes);
+// Add new paymentData routes
+app.use(`${API_PREFIX}/printing/payment-data`, printingPaymentDataRoutes);
+// Add new colorChemicalData routes
+app.use(`${API_PREFIX}/printing/color-chemical-data`, printingColorChemicalDataRoutes);
+
+app.use(`${API_PREFIX}/printing/color-chemicals`, printingColorChemicalRoutes);
+
+app.use(`${API_PREFIX}/printing/payment-records`, printingPaymentRecordRoutes);
 
 // ─── Error Handling ─────────────────────────────────────────────────────────
 app.use(notFound);

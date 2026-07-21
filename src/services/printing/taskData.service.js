@@ -1,4 +1,4 @@
-const TaskData = require('../models/TaskData');
+const TaskData = require('../../models/printing/PrintingTaskData');
 
 /**
  * Helper function to ensure array fields contain only strings.
