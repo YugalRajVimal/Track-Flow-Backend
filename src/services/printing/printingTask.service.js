@@ -234,6 +234,7 @@ async function fetchTaskDataSchemaFields() {
     jigars: 1,
     programName: 1,
     FabricPartyName: 1,
+    submitterName:1,
     recieverPartyName: 1,
     dyerName: 1, // added dyerName
     silicateAndquiringName: 1, // dropdown for silicateAndquiringName
@@ -624,6 +625,15 @@ async function editSubTask(taskId, subTaskIndex, updateData) {
   if (!taskId) throw new Error('taskId is required');
   if (typeof subTaskIndex !== 'number') throw new Error('subTaskIndex is required and must be a number');
 
+  // Defensive: updateData could be a non-object (e.g., array, null, primitive)
+  if (
+    typeof updateData !== 'object' ||
+    updateData === null ||
+    Array.isArray(updateData)
+  ) {
+    throw new Error('updateData must be a plain object');
+  }
+
   const taskRecord = await TaskRecord.findOne({ taskId });
   if (!taskRecord) throw new Error('Task not found');
 
@@ -636,12 +646,21 @@ async function editSubTask(taskId, subTaskIndex, updateData) {
     throw new Error('TotalMTR (MTR) not defined on this task');
   }
 
+  // Use Object.prototype.hasOwnProperty.call but avoid calling it directly on updateData
+  let newMTR =
+    Object.prototype.hasOwnProperty.call(updateData, 'mtr') ?
+      (Number(updateData.mtr) || 0) :
+      (Number(taskRecord.subTask[subTaskIndex].mtr) || 0);
+
   let sumMTR = 0;
   for (let i = 0; i < taskRecord.subTask.length; i++) {
-    sumMTR += i === subTaskIndex
-      ? (updateData.hasOwnProperty('mtr') ? (Number(updateData.mtr) || 0) : (Number(taskRecord.subTask[i].mtr) || 0))
-      : (Number(taskRecord.subTask[i].mtr) || 0);
+    if (i === subTaskIndex) {
+      sumMTR += newMTR;
+    } else {
+      sumMTR += Number(taskRecord.subTask[i].mtr) || 0;
+    }
   }
+
   if (sumMTR > totalMTR) {
     throw new Error('Cannot update subTask: the sum of MTRs would exceed TotalMTR of the task');
   }
@@ -659,7 +678,9 @@ async function editSubTask(taskId, subTaskIndex, updateData) {
 
   const sanitizedUpdateData = {};
   for (const key of allowedFields) {
-    if (Object.prototype.hasOwnProperty.call(updateData, key)) {
+    if (
+      Object.prototype.hasOwnProperty.call(updateData, key)
+    ) {
       sanitizedUpdateData[key] = updateData[key];
     }
   }
@@ -712,12 +733,11 @@ async function deleteSubTask(taskId, subTaskIndex) {
 /**
  * Add a new submission to a subTask.
  *
- * All fields in the submission are mandatory, INCLUDING locationStatus ('warehouse' | 'missing' | 'savedSinkage').
+ * All fields in the submission are mandatory, INCLUDING locationStatus ('warehouse' | 'missing').
  * challanNo must be unique across ALL submissions in this TaskRecord.
  *
  * Reads challanPhotoPath from submissionData.challanPhotoPath (controller now correctly sets this field).
- * Reads locationStatus (required; enum per @TaskRecord.js 44-48).
- * If locationStatus is 'savedSinkage', saves savedSinkage number as well (optional, but must be present if locationStatus === 'savedSinkage').
+ * Reads locationStatus (required; enum per @TaskRecord.js).
  */
 async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFile = null) {
   console.log(submissionData);
@@ -726,8 +746,6 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFi
     if (!subTaskId) throw new Error('subTaskId is required');
 
     const requiredFields = [
-      'fabricPartyName',
-      'recieverPartyName',
       'length',
       'MTR',
       //'Payment', // Removed Payment
@@ -745,36 +763,22 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFi
       }
     }
 
-    // Validate locationStatus enum (warehouse/missing/savedSinkage)
-    const allowedStatuses = ['warehouse', 'missing', 'savedSinkage'];
+    // Validate locationStatus enum (warehouse/missing)
+    const allowedStatuses = ['warehouse', 'missing'];
     if (!allowedStatuses.includes(submissionData.locationStatus)) {
-      throw new Error("Invalid 'locationStatus'. Must be 'warehouse', 'missing', or 'savedSinkage'.");
+      throw new Error("Invalid 'locationStatus'. Must be 'warehouse' or 'missing'.");
     }
 
-    // If locationStatus is 'savedSinkage', savedSinkage number must be present and valid
+    // Build the submission object without fabricPartyName, recieverPartyName, or savedSinkage
     let submission = {
-      fabricPartyName: submissionData.fabricPartyName,
-      recieverPartyName: submissionData.recieverPartyName,
       length: submissionData.length,
       MTR: submissionData.MTR,
       //Payment: submissionData.Payment, // Removed Payment
       challanNo: submissionData.challanNo,
       challanPhotoPath: submissionData.challanPhotoPath,
       submitterName: submissionData.submitterName,
-      locationStatus: submissionData.locationStatus, // Include locationStatus per @TaskRecord.js 44-48
+      locationStatus: submissionData.locationStatus, // Include locationStatus
     };
-
-    if (submissionData.locationStatus === 'savedSinkage') {
-      // savedSinkage is required and must be a number
-      if (
-        typeof submissionData.savedSinkage === 'undefined' ||
-        submissionData.savedSinkage === null ||
-        isNaN(Number(submissionData.savedSinkage))
-      ) {
-        throw new Error('savedSinkage is required and must be a valid number when locationStatus is "savedSinkage".');
-      }
-      submission.savedSinkage = Number(submissionData.savedSinkage);
-    }
 
     // challanPhotoPath is required for new submissions
     if (!submissionData.challanPhotoPath) {
@@ -814,8 +818,7 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFi
 /**
  * Edit an existing submission for a subTask.
  *
- * Accepts and updates 'locationStatus' ('warehouse' | 'missing' | 'savedSinkage') as per @TaskRecord.js 44-48.
- * If changing or setting to 'savedSinkage', also expects and saves savedSinkage number.
+ * Accepts and updates 'locationStatus' ('warehouse' | 'missing').
  * FIX 1: submissionIndex is now correctly received from the controller.
  * FIX 2: when no new file is uploaded and no challanPhotoPath is sent in the body,
  *         the existing stored challanPhotoPath is preserved (not overwritten with undefined).
@@ -831,8 +834,6 @@ async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submi
     }
 
     const requiredFields = [
-      'fabricPartyName',
-      'recieverPartyName',
       'length',
       'MTR',
       //'Payment', // Removed Payment
@@ -850,10 +851,10 @@ async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submi
       }
     }
 
-    // Validate locationStatus enum (warehouse/missing/savedSinkage)
-    const allowedStatuses = ['warehouse', 'missing', 'savedSinkage'];
+    // Validate locationStatus enum (warehouse/missing)
+    const allowedStatuses = ['warehouse', 'missing'];
     if (!allowedStatuses.includes(submissionData.locationStatus)) {
-      throw new Error("Invalid 'locationStatus'. Must be 'warehouse', 'missing', or 'savedSinkage'.");
+      throw new Error("Invalid 'locationStatus'. Must be 'warehouse' or 'missing'.");
     }
 
     const taskRecord = await TaskRecord.findOne({ taskId });
@@ -894,10 +895,8 @@ async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submi
       throw new Error('challanPhotoPath is required — provide a new photo or ensure an existing one is on record');
     }
 
-    // Build updated submission, handle savedSinkage
+    // Build updated submission WITHOUT fabricPartyName, recieverPartyName, or savedSinkage
     const updatedSubmission = {
-      fabricPartyName: submissionData.fabricPartyName,
-      recieverPartyName: submissionData.recieverPartyName,
       length: submissionData.length,
       MTR: submissionData.MTR,
       //Payment: submissionData.Payment, // Removed Payment
@@ -906,17 +905,6 @@ async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submi
       submitterName: submissionData.submitterName,
       locationStatus: submissionData.locationStatus, // Include/update locationStatus
     };
-
-    if (submissionData.locationStatus === 'savedSinkage') {
-      if (
-        typeof submissionData.savedSinkage === 'undefined' ||
-        submissionData.savedSinkage === null ||
-        isNaN(Number(submissionData.savedSinkage))
-      ) {
-        throw new Error('savedSinkage is required and must be a valid number when locationStatus is "savedSinkage".');
-      }
-      updatedSubmission.savedSinkage = Number(submissionData.savedSinkage);
-    }
 
     subTask.submission[submissionIndex] = updatedSubmission;
     await taskRecord.save();

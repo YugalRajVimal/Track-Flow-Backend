@@ -2,16 +2,6 @@ const mongoose = require('mongoose');
 
 const submissionSchema = new mongoose.Schema(
   {
-    fabricPartyName: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    recieverPartyName: {
-      type: String,
-      required: true,
-      trim: true
-    },
     length: {
       type: Number,
       required: true
@@ -36,15 +26,10 @@ const submissionSchema = new mongoose.Schema(
       required: true,
       trim: true
     },
-    // Added new field for enum warehouse/missing
     locationStatus: {
       type: String,
-      enum: ['warehouse', 'missing', 'savedSinkage'],
+      enum: ['warehouse', 'missing'],
       required: true,
-    },
-    savedSinkage: {
-      type: Number,
-      required: false
     }
   },
   { _id: false }

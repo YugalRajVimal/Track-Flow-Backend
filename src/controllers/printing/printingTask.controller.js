@@ -275,35 +275,91 @@ async function deleteTaskController(req, res) {
 
 
 
+// /**
+//  * Controller to add a subTask to a TaskRecord.
+//  */
+// async function addSubTaskController(req, res) {
+//   try {
+//     const { taskId } = req.params;
+//     const subTask = req.body;
+//     const updatedTask = await taskService.addSubTask(taskId, subTask);
+//     res.json({ success: true, data: updatedTask });
+//   } catch (error) {
+//     res.status(400).json({ success: false, message: error.message });
+//   }
+// }
+
+
+// /**
+//  * Controller to edit/update a subTask for a TaskRecord.
+//  */
+// async function editSubTaskController(req, res) {
+//   try {
+//     const { taskId, subTaskIndex } = req.params;
+//     const updateData = req.body;
+//     const updatedTask = await taskService.editSubTask(taskId, parseInt(subTaskIndex, 10), updateData);
+//     res.json({ success: true, data: updatedTask });
+//   } catch (error) {
+//     res.status(400).json({ success: false, message: error.message });
+//   }
+// }
+
 /**
  * Controller to add a subTask to a TaskRecord.
  */
 async function addSubTaskController(req, res) {
+  let fileToDelete = null;
   try {
     const { taskId } = req.params;
     const subTask = req.body;
+
+    if (req.file) {
+      let fileName = req.file.filename;
+      if (!fileName && req.file.originalname) {
+        fileName = req.file.originalname.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '');
+      }
+      if (fileName) {
+        subTask.challanPhoto = `/uploads/${fileName}`;   // back to challanPhoto
+        fileToDelete = path.join(__dirname, '..', 'uploads', fileName);
+      }
+    }
+
     const updatedTask = await taskService.addSubTask(taskId, subTask);
     res.json({ success: true, data: updatedTask });
   } catch (error) {
+    if (fileToDelete && fs.existsSync(fileToDelete)) {
+      try { fs.unlinkSync(fileToDelete); } catch {/* ignore */}
+    }
     res.status(400).json({ success: false, message: error.message });
   }
 }
 
-
-/**
- * Controller to edit/update a subTask for a TaskRecord.
- */
 async function editSubTaskController(req, res) {
+  let fileToDelete = null;
   try {
     const { taskId, subTaskIndex } = req.params;
     const updateData = req.body;
+
+    if (req.file) {
+      let fileName = req.file.filename;
+      if (!fileName && req.file.originalname) {
+        fileName = req.file.originalname.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '');
+      }
+      if (fileName) {
+        updateData.challanPhoto = `/uploads/${fileName}`;   // back to challanPhoto
+        fileToDelete = path.join(__dirname, '..', 'uploads', fileName);
+      }
+    }
+
     const updatedTask = await taskService.editSubTask(taskId, parseInt(subTaskIndex, 10), updateData);
     res.json({ success: true, data: updatedTask });
   } catch (error) {
+    if (fileToDelete && fs.existsSync(fileToDelete)) {
+      try { fs.unlinkSync(fileToDelete); } catch {/* ignore */}
+    }
     res.status(400).json({ success: false, message: error.message });
   }
 }
-
 
 /**
  * Controller to fetch subTasks for a TaskRecord.
@@ -336,6 +392,7 @@ async function deleteSubTaskController(req, res) {
 }
 
 
+
 /**
  * Controller to ADD a new submission to a subTask.
  *
@@ -351,9 +408,9 @@ async function addSubmissionToSubTaskController(req, res) {
 
     // Ensure correct value for locationStatus ('warehouse' or 'missing') if present
     if (submissionData.locationStatus !== undefined) {
-      const allowedStatuses = ['warehouse', 'missing','savedSinkage'];
+      const allowedStatuses = ['warehouse', 'missing'];
       if (!allowedStatuses.includes(submissionData.locationStatus)) {
-        return res.status(400).json({ success: false, message: "Invalid 'locationStatus' value. Must be 'warehouse' or 'missing' or 'savedSinkage'." });
+        return res.status(400).json({ success: false, message: "Invalid 'locationStatus' value. Must be 'warehouse' or 'missing'." });
       }
     }
 
@@ -398,9 +455,9 @@ async function editSubmissionOfSubTaskController(req, res) {
 
     // Validate the new locationStatus if present
     if (submissionData.locationStatus !== undefined) {
-      const allowedStatuses = ['warehouse', 'missing','savedSinkage'];
+      const allowedStatuses = ['warehouse', 'missing'];
       if (!allowedStatuses.includes(submissionData.locationStatus)) {
-        return res.status(400).json({ success: false, message: "Invalid 'locationStatus' value. Must be 'warehouse' or 'missing' or 'savedSinkage'." });
+        return res.status(400).json({ success: false, message: "Invalid 'locationStatus' value. Must be 'warehouse' or 'missing'." });
       }
     }
 

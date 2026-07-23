@@ -54,10 +54,10 @@ router.delete('/:taskId', deleteTaskController);
 
 // SubTask routes
 // Add a subTask to a TaskRecord
-router.post('/:taskId/subtasks', addSubTaskController);
+router.post('/:taskId/subtasks', uploadImage, addSubTaskController);
 
 // Edit/update a subTask of a TaskRecord by subTaskIndex
-router.put('/:taskId/subtasks/:subTaskIndex', editSubTaskController);
+router.put('/:taskId/subtasks/:subTaskIndex',uploadImage, editSubTaskController);
 
 // Fetch all subTasks or a specific subTask (if subTaskIndex is provided) for a TaskRecord
 router.get('/:taskId/subtasks/:subTaskIndex?', fetchSubTasksController);

@@ -2,16 +2,16 @@ const mongoose = require('mongoose');
 
 /**
  * Schema to store costing of per meter fabric (rate) according to:
- * - Program Name (programName)
+ * - Print Type (printType)
  * - Party Name (partyName)
  * - Fabric Type (fabricType)
  * 
- * Each document represents one (programName, partyName, fabricType) combination and a per-mtr rate.
- * Example: { programName: "X", partyName: "Y", fabricType: "Z", rate: 12 }
+ * Each document represents one (printType, partyName, fabricType) combination and a per-mtr rate.
+ * Example: { printType: "X", partyName: "Y", fabricType: "Z", rate: 12 }
  */
 const printingSubmissionPaymentDataSchema = new mongoose.Schema(
   {
-    programName: {
+    printType: {
       type: String,
       required: true,
       trim: true,
@@ -34,9 +34,9 @@ const printingSubmissionPaymentDataSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// To ensure uniqueness for (programName, partyName, fabricType)
+// To ensure uniqueness for (printType, partyName, fabricType)
 printingSubmissionPaymentDataSchema.index(
-  { programName: 1, partyName: 1, fabricType: 1 },
+  { printType: 1, partyName: 1, fabricType: 1 },
   { unique: true }
 );
 
