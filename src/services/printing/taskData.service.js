@@ -39,6 +39,10 @@ async function getTaskDataDropdownValues() {
         recieverPartyName: [],
         jigars: [],
         submitterName: [],
+        dyerName: [],
+        processName: [],
+        silicateAndquiringName: [],
+        printType: [],
       };
     }
     console.log('[TaskDataService] Found TaskData:', taskData._id);
@@ -54,6 +58,10 @@ async function getTaskDataDropdownValues() {
       recieverPartyName: Array.isArray(taskData.recieverPartyName) ? taskData.recieverPartyName : [],
       jigars: Array.isArray(taskData.jigars) ? taskData.jigars : [],
       submitterName: Array.isArray(taskData.submitterName) ? taskData.submitterName : [],
+      dyerName: Array.isArray(taskData.dyerName) ? taskData.dyerName : [],
+      processName: Array.isArray(taskData.processName) ? taskData.processName : [],
+      silicateAndquiringName: Array.isArray(taskData.silicateAndquiringName) ? taskData.silicateAndquiringName : [],
+      printType: Array.isArray(taskData.printType) ? taskData.printType : [],
     };
   } catch (error) {
     console.error('[TaskDataService] Error fetching dropdown values:', error);
@@ -81,6 +89,10 @@ async function createTaskDataDropdown(data) {
       recieverPartyName: ensureStringArray(data.recieverPartyName),
       jigars: ensureStringArray(data.jigars),
       submitterName: ensureStringArray(data.submitterName),
+      dyerName: ensureStringArray(data.dyerName),
+      processName: ensureStringArray(data.processName),
+      silicateAndquiringName: ensureStringArray(data.silicateAndquiringName),
+      printType: ensureStringArray(data.printType),
     };
     console.log('[TaskDataService] Creating/Updating TaskData with sanitized data:', sanitizedData);
 
@@ -125,6 +137,10 @@ async function updateTaskDataDropdown(id, data) {
       recieverPartyName: ensureStringArray(data.recieverPartyName),
       jigars: ensureStringArray(data.jigars),
       submitterName: ensureStringArray(data.submitterName),
+      dyerName: ensureStringArray(data.dyerName),
+      processName: ensureStringArray(data.processName),
+      silicateAndquiringName: ensureStringArray(data.silicateAndquiringName),
+      printType: ensureStringArray(data.printType),
     };
     console.log(`[TaskDataService] Updating TaskData with id: ${id} sanitized data:`, sanitizedData);
 

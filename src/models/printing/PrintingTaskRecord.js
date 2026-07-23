@@ -62,7 +62,26 @@ const subTaskSchema = new mongoose.Schema(
       required: false,
       trim: true
     },
-    jigarNo: {
+    challanNo: {
+      type: String,
+      required: false,
+      trim: true
+    },
+    silicateOrQuiringName: {
+      type: String,
+      required: false,
+      trim: true
+    },
+    sinkage: {
+      type: Number,
+      required: false
+    },
+    challanPhoto: {
+      type: String,
+      required: false,
+      trim: true
+    },
+    printType: {
       type: String,
       required: false,
       trim: true
@@ -70,15 +89,6 @@ const subTaskSchema = new mongoose.Schema(
     mtr: {
       type: Number,
       required: false
-    },
-    mtrShort: {
-      type: Number,
-      required: false
-    },
-    remark: {
-      type: String,
-      required: false,
-      trim: true
     },
     submission: {
       type: [submissionSchema],
@@ -133,6 +143,10 @@ const taskRecordSchema = new mongoose.Schema(
       type: Number,
       required: false
     },
+    dyerSinkage: {
+      type: Number,
+      required: false
+    },
     mtrAfterSinkage: {
       type: Number,
       required: false
@@ -142,6 +156,18 @@ const taskRecordSchema = new mongoose.Schema(
       required: false
     },
     receiverName: {
+      type: String,
+      required: false,
+      trim: true
+    },
+    // Added dyerName field in Task
+    dyerName: {
+      type: String,
+      required: false,
+      trim: true
+    },
+    // Added processName field in Task
+    processName: {
       type: String,
       required: false,
       trim: true
@@ -159,7 +185,15 @@ const taskRecordSchema = new mongoose.Schema(
     subTask: {
       type: [subTaskSchema],
       default: []
-    }
+    },
+    // NEW: distinguishes Ready Fabric vs Builty In workflow
+    taskType: {
+      type: String,
+      enum: ['ReadyFabric', 'BuiltyIn'],
+      required: true,
+      default: 'BuiltyIn',
+      trim: true
+    },
   },
   { timestamps: true }
 );

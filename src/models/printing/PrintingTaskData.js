@@ -43,6 +43,21 @@ const printingTaskDataSchema = new mongoose.Schema(
     ],
     submitterName: [
       { type: String, trim: true, required: true }
+    ],
+    dyerName: [
+      { type: String, trim: true, required: true }
+    ],
+    // Added processName
+    processName: [
+      { type: String, trim: true, required: true }
+    ],
+    // Added silicateAndquiringName
+    silicateAndquiringName: [
+      { type: String, trim: true, required: true }
+    ],
+    // Added printType
+    printType: [
+      { type: String, trim: true, required: true }
     ]
   },
   { timestamps: true }

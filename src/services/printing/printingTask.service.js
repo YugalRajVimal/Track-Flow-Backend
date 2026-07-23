@@ -221,6 +221,7 @@ async function fetchDashboardFabricStats(filter = {}) {
 
 /**
  * Service to fetch taskDataSchema config fields from TaskData.
+ * Added dyerName.
  */
 async function fetchTaskDataSchemaFields() {
   const config = await TaskData.findOne({}, {
@@ -234,6 +235,9 @@ async function fetchTaskDataSchemaFields() {
     programName: 1,
     FabricPartyName: 1,
     recieverPartyName: 1,
+    dyerName: 1, // added dyerName
+    silicateAndquiringName: 1, // dropdown for silicateAndquiringName
+    printType: 1, // dropdown for printType
     _id: 0,
   });
   if (!config) throw new Error('Task data schema config not found');
@@ -243,8 +247,13 @@ async function fetchTaskDataSchemaFields() {
 
 /**
  * Create one or multiple tasks.
+ * Added dyerName support.
+ * Enforces allowed taskType values.
  */
 async function createTasks(groupData, taskDetails) {
+  console.log(groupData)
+  console.log(taskDetails)
+
   if (!Array.isArray(taskDetails) || taskDetails.length === 0) {
     throw new Error('taskDetails array is required');
   }
@@ -261,13 +270,40 @@ async function createTasks(groupData, taskDetails) {
     .replace(/\s+/g, '_')
     .replace(/[^A-Z0-9_]/g, '');
 
+  // <--- Enforce taskType allowed values here --->
+  const safeTaskType = ['ReadyFabric', 'BuiltyIn'].includes(groupData.taskType)
+    ? groupData.taskType
+    : 'BuiltyIn';
+
+  // dyerName should be only at groupData level, not in taskDetails/items
+  const groupDataWithoutDyerName = { ...groupData };
+  // If dyerName in groupData, ensure it is set there. Remove dyerName from taskDetails.
+  // (If dyerName is not in groupData, it is left undefined)
+  if ('dyerName' in groupDataWithoutDyerName) {
+    // ok, pass as is
+  } else {
+    // Remove any accidental dyerName from groupData
+    delete groupDataWithoutDyerName.dyerName;
+  }
+
+  // For each task, do NOT take dyerName from item, only from groupData
   const newTasks = taskDetails.map(item => {
     const taskId = sanitizedPartyName
       ? `${sanitizedPartyName}-${currentCounter++}`
       : `${currentCounter++}`;
-    // Remove taskStatus in final object
-    const { taskStatus, ...rest } = item;
-    return { ...groupData, ...rest, taskId };
+    const { taskStatus, dyerName: _ignoreDyerName, ...rest } = item; // Remove dyerName if present in item
+
+    // Compose the task object--dyerName only comes from groupData (if exists)
+    let taskObj = {
+      ...groupDataWithoutDyerName,
+      ...rest,
+      taskId,
+      taskType: safeTaskType,
+    };
+    if (groupData.dyerName) {
+      taskObj.dyerName = groupData.dyerName;
+    }
+    return taskObj;
   });
 
   const created = await TaskRecord.insertMany(newTasks);
@@ -279,6 +315,7 @@ async function createTasks(groupData, taskDetails) {
 
 /**
  * Edit/Update a task by taskId.
+ * Allows updating dyerName.
  */
 async function editTask(taskId, updateData) {
   if (!taskId) throw new Error('taskId is required');
@@ -286,6 +323,7 @@ async function editTask(taskId, updateData) {
   if (Object.prototype.hasOwnProperty.call(updateData, 'taskStatus')) {
     delete updateData.taskStatus;
   }
+  // (dyerName can be updated if present in updateData)
   const updated = await TaskRecord.findOneAndUpdate({ taskId }, updateData, { new: true });
   if (!updated) throw new Error('Task not found');
   return updated;
@@ -293,11 +331,11 @@ async function editTask(taskId, updateData) {
 
 
 /**
- * Fetch tasks (single by taskId or multiple with filter, including date, partyName, transportName, receiverName, fabricType).
+ * Fetch tasks (single by taskId or multiple with filter, including date, partyName, transportName, receiverName, fabricType, dyerName).
  * Supports pagination: { page, pageSize }
  * Filters:
  *   - from, to: (ISO strings representing date range, matched on createdAt)
- *   - partyName, transportName, receiverName, fabricType: (string; partial/case-insensitive match)
+ *   - partyName, transportName, receiverName, fabricType, dyerName: (string; partial/case-insensitive match)
  */
 async function fetchTasks(filter = {}) {
   const {
@@ -308,6 +346,7 @@ async function fetchTasks(filter = {}) {
     transportName,
     receiverName,
     fabricType,
+    dyerName,
     page = 1,
     pageSize = 10,
   } = filter;
@@ -362,6 +401,12 @@ async function fetchTasks(filter = {}) {
     console.log('[fetchTasks] FabricType filter:', fabricType);
   }
 
+  // Dyer name filter
+  if (dyerName) {
+    andQueries.push({ dyerName: { $regex: dyerName, $options: 'i' } });
+    console.log('[fetchTasks] dyerName filter:', dyerName);
+  }
+
   // Combine queries
   let query = andQueries.length > 0 ? { $and: andQueries } : {};
 
@@ -409,6 +454,7 @@ async function fetchByTaskId(taskId) {
  *   - transportName: transportName field (case-insensitive substring match)
  *   - receiverName: receiverName field (case-insensitive substring match)
  *   - fabricType: FabricType field (case-insensitive substring match)
+ *   - dyerName: dyerName field (case-insensitive substring match)
  *   - programName: filter if at least one subTask.program matches this (case-insensitive substring match)
  *   - jigarNo: filter if at least one subTask.jigarNo matches this (case-insensitive substring match)
  *   - page, pageSize: pagination control
@@ -420,14 +466,13 @@ async function fetchTasksWithPendingSubTasks({
   transportName,
   receiverName,
   fabricType,
+  dyerName,
   programName,
   jigarNo,
   page = 1,
   pageSize = 20,
 } = {}) {
   const andQueries = [];
-
-
 
   // Date filter (createdAt)
   if (dateFrom || dateTo) {
@@ -455,6 +500,11 @@ async function fetchTasksWithPendingSubTasks({
   // Fabric Type filter
   if (fabricType) {
     andQueries.push({ FabricType: { $regex: fabricType, $options: 'i' } });
+  }
+
+  // Dyer Name filter
+  if (dyerName) {
+    andQueries.push({ dyerName: { $regex: dyerName, $options: 'i' } });
   }
 
   // programName in subTask
@@ -505,10 +555,33 @@ async function deleteTask(taskId) {
 
 /**
  * Add a subTask to a specific TaskRecord by taskId.
+ * Adds the following fields to subTask if present:
+ *   challanNo, silicateOrQuiringName, sinkage, challanPhoto, printType
+ * Removes mtrShort, jigarNo, remark if present in the incoming subTask object.
  */
 async function addSubTask(taskId, subTask) {
   if (!taskId) throw new Error('taskId is required');
   if (!subTask) throw new Error('subTask object is required');
+
+  // Remove unwanted props, add relevant ones only
+  const sanitizedSubTask = {
+    // always present fields
+    program: subTask.program,
+    mtr: subTask.mtr,
+    // new required/optional fields for subtask
+    challanNo: subTask.challanNo,
+    silicateOrQuiringName: subTask.silicateOrQuiringName,
+    sinkage: subTask.sinkage,
+    challanPhoto: subTask.challanPhoto,
+    printType: subTask.printType,
+    // subTaskId will be added below
+    // submission array is handled by schema default
+  };
+
+  // Remove any undefined fields for a cleaner DB doc
+  Object.keys(sanitizedSubTask).forEach(
+    key => (sanitizedSubTask[key] === undefined) && delete sanitizedSubTask[key]
+  );
 
   const taskRecord = await TaskRecord.findOne({ taskId });
   if (!taskRecord) throw new Error('Task not found');
@@ -521,7 +594,7 @@ async function addSubTask(taskId, subTask) {
   const sumExistingMTR = Array.isArray(taskRecord.subTask)
     ? taskRecord.subTask.reduce((acc, sub) => acc + (Number(sub.mtr) || 0), 0)
     : 0;
-  const newSubTaskMTR = Number(subTask.mtr) || 0;
+  const newSubTaskMTR = Number(sanitizedSubTask.mtr) || 0;
   if ((sumExistingMTR + newSubTaskMTR) > totalMTR) {
     throw new Error('Cannot add subTask: the sum of MTRs would exceed TotalMTR of the task');
   }
@@ -534,8 +607,8 @@ async function addSubTask(taskId, subTask) {
   taskDataDoc.subTaskIdCounter += 1;
   await taskDataDoc.save();
 
-  subTask.subTaskId = `${taskId}-S-${newSubTaskCounter}`;
-  taskRecord.subTask.push(subTask);
+  sanitizedSubTask.subTaskId = `${taskId}-S-${newSubTaskCounter}`;
+  taskRecord.subTask.push(sanitizedSubTask);
   await taskRecord.save();
   return taskRecord;
 }
@@ -543,6 +616,9 @@ async function addSubTask(taskId, subTask) {
 
 /**
  * Edit/update a single subTask of a TaskRecord.
+ * Ensures only relevant fields are updated:
+ *   challanNo, silicateOrQuiringName, sinkage, challanPhoto, printType, mtr, program
+ * Removes any mtrShort, jigarNo, remark fields present in updateData from being updated on the subTask.
  */
 async function editSubTask(taskId, subTaskIndex, updateData) {
   if (!taskId) throw new Error('taskId is required');
@@ -570,7 +646,26 @@ async function editSubTask(taskId, subTaskIndex, updateData) {
     throw new Error('Cannot update subTask: the sum of MTRs would exceed TotalMTR of the task');
   }
 
-  Object.assign(taskRecord.subTask[subTaskIndex], updateData);
+  // Only allow relevant fields to be updated, and ignore invalid ones
+  const allowedFields = [
+    'program',
+    'mtr',
+    'challanNo',
+    'silicateOrQuiringName',
+    'sinkage',
+    'challanPhoto',
+    'printType'
+  ];
+
+  const sanitizedUpdateData = {};
+  for (const key of allowedFields) {
+    if (Object.prototype.hasOwnProperty.call(updateData, key)) {
+      sanitizedUpdateData[key] = updateData[key];
+    }
+  }
+
+  // Actually update only allowed fields
+  Object.assign(taskRecord.subTask[subTaskIndex], sanitizedUpdateData);
   await taskRecord.save();
   return taskRecord;
 }
