@@ -35,6 +35,12 @@ const submissionSchema = new mongoose.Schema(
       type: String,
       required: false,
       trim: true
+    },
+    // Add date field to submission
+    date: {
+      type: Date,
+      required: false,
+      default: null
     }
   },
   { _id: false }
@@ -83,6 +89,12 @@ const subTaskSchema = new mongoose.Schema(
     submission: {
       type: [submissionSchema],
       default: []
+    },
+    // Add date field to subTask
+    date: {
+      type: Date,
+      required: false,
+      default: null
     }
   },
   { _id: false }
@@ -184,6 +196,12 @@ const taskRecordSchema = new mongoose.Schema(
       default: 'BuiltyIn',
       trim: true
     },
+    // Add date field to task
+    date: {
+      type: Date,
+      required: false,
+      default: null
+    }
   },
   { timestamps: true }
 );

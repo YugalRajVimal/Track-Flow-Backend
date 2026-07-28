@@ -585,7 +585,7 @@ async function deleteTask(taskId) {
 /**
  * Add a subTask to a specific TaskRecord by taskId.
  * Adds the following fields to subTask if present:
- *   challanNo, silicateOrQuiringName, sinkage, challanPhoto, printType
+ *   challanNo, silicateOrQuiringName, sinkage, challanPhoto, printType, date
  * Removes mtrShort, jigarNo, remark if present in the incoming subTask object.
  */
 async function addSubTask(taskId, subTask) {
@@ -603,6 +603,7 @@ async function addSubTask(taskId, subTask) {
     sinkage: subTask.sinkage,
     challanPhoto: subTask.challanPhoto,
     printType: subTask.printType,
+    date: subTask.date, // Added date field
     // subTaskId will be added below
     // submission array is handled by schema default
   };
@@ -646,7 +647,7 @@ async function addSubTask(taskId, subTask) {
 /**
  * Edit/update a single subTask of a TaskRecord.
  * Ensures only relevant fields are updated:
- *   challanNo, silicateOrQuiringName, sinkage, challanPhoto, printType, mtr, program
+ *   challanNo, silicateOrQuiringName, sinkage, challanPhoto, printType, mtr, program, date
  * Removes any mtrShort, jigarNo, remark fields present in updateData from being updated on the subTask.
  */
 async function editSubTask(taskId, subTaskIndex, updateData) {
@@ -701,7 +702,8 @@ async function editSubTask(taskId, subTaskIndex, updateData) {
     'silicateOrQuiringName',
     'sinkage',
     'challanPhoto',
-    'printType'
+    'printType',
+    'date' // Added date field
   ];
 
   const sanitizedUpdateData = {};
@@ -766,7 +768,7 @@ async function deleteSubTask(taskId, subTaskIndex) {
  *
  * Reads challanPhotoPath from submissionData.challanPhotoPath (controller now correctly sets this field).
  * Reads locationStatus (required; enum per @TaskRecord.js).
- * Adds recieverPartyName to submission.
+ * Adds recieverPartyName and date to submission.
  */
 async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFile = null) {
   console.log(submissionData);
@@ -781,6 +783,7 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFi
       'challanNo',
       'submitterName',
       'locationStatus',
+      'date',
     ];
     for (const field of requiredFields) {
       if (
@@ -807,6 +810,7 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFi
       challanPhotoPath: submissionData.challanPhotoPath,
       submitterName: submissionData.submitterName,
       locationStatus: submissionData.locationStatus, // Include locationStatus
+      date: submissionData.date,
       recieverPartyName: submissionData.recieverPartyName !== undefined ? submissionData.recieverPartyName : undefined,
     };
 
@@ -848,7 +852,7 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFi
  * When no new file is uploaded and no challanPhotoPath is sent in the body,
  * the existing stored challanPhotoPath is preserved (not overwritten with undefined).
  * challanNo can be duplicate (no uniqueness enforced).
- * Allows editing recieverPartyName in submission.
+ * Allows editing recieverPartyName and date in submission.
  */
 async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submissionData, imageFile = null) {
 
@@ -866,6 +870,7 @@ async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submi
       'challanNo',
       'submitterName',
       'locationStatus',
+      'date',
     ];
     for (const field of requiredFields) {
       if (
@@ -916,6 +921,7 @@ async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submi
       challanPhotoPath, // Preserved/correctly set
       submitterName: submissionData.submitterName,
       locationStatus: submissionData.locationStatus, // Include/update locationStatus
+      date: submissionData.date,
       recieverPartyName: submissionData.recieverPartyName !== undefined ? submissionData.recieverPartyName : undefined,
     };
 
