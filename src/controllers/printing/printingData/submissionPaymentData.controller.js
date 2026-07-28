@@ -2,19 +2,19 @@ const submissionPaymentDataService = require('../../../services/printing/submiss
 const { sendSuccess, sendError } = require('../../../utils/response');
 
 /**
- * Get a single rate by printType, partyName, and fabricType
- * Expects query params: printType, partyName, fabricType
+ * Get a single rate by processName, receiverPartyName, and fabricType
+ * Expects query params: processName, receiverPartyName, fabricType
  */
 async function getRate(req, res, next) {
   try {
-    const { printType, partyName, fabricType } = req.query;
+    const { processName, receiverPartyName, fabricType } = req.query;
     // Validate existence of required query parameters
     if (
-      typeof printType !== 'string' ||
-      typeof partyName !== 'string' ||
+      typeof processName !== 'string' ||
+      typeof receiverPartyName !== 'string' ||
       typeof fabricType !== 'string' ||
-      !printType.trim() ||
-      !partyName.trim() ||
+      !processName.trim() ||
+      !receiverPartyName.trim() ||
       !fabricType.trim()
     ) {
       return sendError(res, 400, 'Missing required query parameters');
@@ -22,8 +22,8 @@ async function getRate(req, res, next) {
 
     // Call the service to find the rate
     const rate = await submissionPaymentDataService.findRate(
-      printType.trim(),
-      partyName.trim(),
+      processName.trim(),
+      receiverPartyName.trim(),
       fabricType.trim()
     );
     if (!rate) {
@@ -37,16 +37,16 @@ async function getRate(req, res, next) {
 }
 
 /**
- * Upsert (create or update) a rate for a (printType, partyName, fabricType) combination.
- * Expects JSON body: { printType, partyName, fabricType, rate }
+ * Upsert (create or update) a rate for a (processName, receiverPartyName, fabricType) combination.
+ * Expects JSON body: { processName, receiverPartyName, fabricType, rate }
  */
 async function upsertRate(req, res, next) {
   try {
-    const { printType, partyName, fabricType, rate } = req.body;
-    if (!printType || !partyName || !fabricType || typeof rate !== 'number') {
+    const { processName, receiverPartyName, fabricType, rate } = req.body;
+    if (!processName || !receiverPartyName || !fabricType || typeof rate !== 'number') {
       return sendError(res, 400, 'Missing or invalid body parameters');
     }
-    const result = await submissionPaymentDataService.upsertRate(printType, partyName, fabricType, rate);
+    const result = await submissionPaymentDataService.upsertRate(processName, receiverPartyName, fabricType, rate);
     return sendSuccess(res, 200, 'Rate upserted successfully', result);
   } catch (error) {
     next(error);
@@ -54,16 +54,16 @@ async function upsertRate(req, res, next) {
 }
 
 /**
- * Delete a rate for a (printType, partyName, fabricType) combination.
- * Expects JSON body: { printType, partyName, fabricType }
+ * Delete a rate for a (processName, receiverPartyName, fabricType) combination.
+ * Expects JSON body: { processName, receiverPartyName, fabricType }
  */
 async function deleteRate(req, res, next) {
   try {
-    const { printType, partyName, fabricType } = req.body;
-    if (!printType || !partyName || !fabricType) {
+    const { processName, receiverPartyName, fabricType } = req.body;
+    if (!processName || !receiverPartyName || !fabricType) {
       return sendError(res, 400, 'Missing body parameters');
     }
-    const result = await submissionPaymentDataService.deleteRate(printType, partyName, fabricType);
+    const result = await submissionPaymentDataService.deleteRate(processName, receiverPartyName, fabricType);
     if (result.deletedCount === 0) {
       return sendError(res, 404, 'Rate not found');
     }

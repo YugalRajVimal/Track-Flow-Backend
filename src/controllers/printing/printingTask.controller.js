@@ -231,7 +231,7 @@ async function fetchTasksWithPendingSubTasksController(req, res) {
       ...rest // pass through any extra query filters
     } = req.query;
 
-    // Compose filters per fetchTasksWithPendingSubTasks signature
+    // Always ensure taskType is ReadyFabric
     const filters = {
       ...(fromdate ? { fromdate } : {}),
       ...(toDate ? { toDate } : {}),

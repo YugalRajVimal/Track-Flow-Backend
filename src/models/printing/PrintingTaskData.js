@@ -8,6 +8,9 @@ const printingTaskDataSchema = new mongoose.Schema(
     taskIdCounter: {
       type: Number,
     },
+    builtyIdCounter:{
+      type: Number,
+    },
     subTaskIdCounter: {
       type: Number,
     },

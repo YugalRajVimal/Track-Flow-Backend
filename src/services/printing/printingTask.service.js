@@ -239,6 +239,7 @@ async function fetchTaskDataSchemaFields() {
     dyerName: 1, // added dyerName
     silicateAndquiringName: 1, // dropdown for silicateAndquiringName
     printType: 1, // dropdown for printType
+    processName:1,
     _id: 0,
   });
   if (!config) throw new Error('Task data schema config not found');
@@ -261,9 +262,24 @@ async function createTasks(groupData, taskDetails) {
 
   let taskDataDoc = await TaskData.findOne();
   if (!taskDataDoc) {
-    taskDataDoc = await TaskData.create({ taskIdCounter: 1 });
+    taskDataDoc = await TaskData.create({ taskIdCounter: 1, builtyIdCounter: 1 });
   }
-  let currentCounter = taskDataDoc.taskIdCounter || 1;
+
+  // <--- Enforce taskType allowed values here --->
+  const safeTaskType = ['ReadyFabric', 'BuiltyIn'].includes(groupData.taskType)
+    ? groupData.taskType
+    : 'BuiltyIn';
+
+  // Pick which counter to use based on taskType
+  let currentCounter;
+  let usingCounter = null;
+  if (safeTaskType === 'BuiltyIn') {
+    currentCounter = taskDataDoc.builtyIdCounter || 1;
+    usingCounter = 'builtyIdCounter';
+  } else {
+    currentCounter = taskDataDoc.taskIdCounter || 1;
+    usingCounter = 'taskIdCounter';
+  }
 
   const rawPartyName = groupData.partyName || '';
   const sanitizedPartyName = rawPartyName
@@ -271,15 +287,8 @@ async function createTasks(groupData, taskDetails) {
     .replace(/\s+/g, '_')
     .replace(/[^A-Z0-9_]/g, '');
 
-  // <--- Enforce taskType allowed values here --->
-  const safeTaskType = ['ReadyFabric', 'BuiltyIn'].includes(groupData.taskType)
-    ? groupData.taskType
-    : 'BuiltyIn';
-
   // dyerName should be only at groupData level, not in taskDetails/items
   const groupDataWithoutDyerName = { ...groupData };
-  // If dyerName in groupData, ensure it is set there. Remove dyerName from taskDetails.
-  // (If dyerName is not in groupData, it is left undefined)
   if ('dyerName' in groupDataWithoutDyerName) {
     // ok, pass as is
   } else {
@@ -294,7 +303,6 @@ async function createTasks(groupData, taskDetails) {
       : `${currentCounter++}`;
     const { taskStatus, dyerName: _ignoreDyerName, ...rest } = item; // Remove dyerName if present in item
 
-    // Compose the task object--dyerName only comes from groupData (if exists)
     let taskObj = {
       ...groupDataWithoutDyerName,
       ...rest,
@@ -308,7 +316,12 @@ async function createTasks(groupData, taskDetails) {
   });
 
   const created = await TaskRecord.insertMany(newTasks);
-  taskDataDoc.taskIdCounter = currentCounter;
+  // Save updated counter based on which was used
+  if (usingCounter === 'builtyIdCounter') {
+    taskDataDoc.builtyIdCounter = currentCounter;
+  } else {
+    taskDataDoc.taskIdCounter = currentCounter;
+  }
   await taskDataDoc.save();
   return created;
 }
@@ -350,6 +363,7 @@ async function fetchTasks(filter = {}) {
     dyerName,
     page = 1,
     pageSize = 10,
+    taskType, // Added for filtering by taskType (BuiltyIn / ReadyFabric etc.)
   } = filter;
 
   // Debug/filter checks
@@ -406,6 +420,17 @@ async function fetchTasks(filter = {}) {
   if (dyerName) {
     andQueries.push({ dyerName: { $regex: dyerName, $options: 'i' } });
     console.log('[fetchTasks] dyerName filter:', dyerName);
+  }
+
+  // TaskType filter (BuiltyIn / ReadyFabric)
+  if (taskType) {
+    if (Array.isArray(taskType)) {
+      andQueries.push({ taskType: { $in: taskType } });
+      console.log('[fetchTasks] taskType filter (multiple):', taskType);
+    } else {
+      andQueries.push({ taskType });
+      console.log('[fetchTasks] taskType filter:', taskType);
+    }
   }
 
   // Combine queries
@@ -474,6 +499,9 @@ async function fetchTasksWithPendingSubTasks({
   pageSize = 20,
 } = {}) {
   const andQueries = [];
+
+  // Always filter for taskType = "ReadyFabric"
+  andQueries.push({ taskType: "ReadyFabric" });
 
   // Date filter (createdAt)
   if (dateFrom || dateTo) {
@@ -734,10 +762,11 @@ async function deleteSubTask(taskId, subTaskIndex) {
  * Add a new submission to a subTask.
  *
  * All fields in the submission are mandatory, INCLUDING locationStatus ('warehouse' | 'missing').
- * challanNo must be unique across ALL submissions in this TaskRecord.
+ * challanNo can be duplicate (no uniqueness enforced).
  *
  * Reads challanPhotoPath from submissionData.challanPhotoPath (controller now correctly sets this field).
  * Reads locationStatus (required; enum per @TaskRecord.js).
+ * Adds recieverPartyName to submission.
  */
 async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFile = null) {
   console.log(submissionData);
@@ -748,7 +777,7 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFi
     const requiredFields = [
       'length',
       'MTR',
-      //'Payment', // Removed Payment
+      // 'Payment', // Removed Payment
       'challanNo',
       'submitterName',
       'locationStatus',
@@ -769,16 +798,22 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFi
       throw new Error("Invalid 'locationStatus'. Must be 'warehouse' or 'missing'.");
     }
 
-    // Build the submission object without fabricPartyName, recieverPartyName, or savedSinkage
+    // Build the submission object WITH recieverPartyName (optional field)
     let submission = {
       length: submissionData.length,
       MTR: submissionData.MTR,
-      //Payment: submissionData.Payment, // Removed Payment
+      // Payment: submissionData.Payment, // Removed Payment
       challanNo: submissionData.challanNo,
       challanPhotoPath: submissionData.challanPhotoPath,
       submitterName: submissionData.submitterName,
       locationStatus: submissionData.locationStatus, // Include locationStatus
+      recieverPartyName: submissionData.recieverPartyName !== undefined ? submissionData.recieverPartyName : undefined,
     };
+
+    // Remove undefined recieverPartyName if not provided
+    if (submission.recieverPartyName === undefined) {
+      delete submission.recieverPartyName;
+    }
 
     // challanPhotoPath is required for new submissions
     if (!submissionData.challanPhotoPath) {
@@ -788,17 +823,7 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFi
     const taskRecord = await TaskRecord.findOne({ taskId });
     if (!taskRecord) throw new Error('Task not found');
 
-    // Unique challanNo check across all submissions in all subTasks
-    for (const st of taskRecord.subTask || []) {
-      for (const sub of Array.isArray(st.submission) ? st.submission : []) {
-        if (
-          String(sub.challanNo).trim().toLowerCase() ===
-          String(submissionData.challanNo).trim().toLowerCase()
-        ) {
-          throw new Error('challanNo must be unique among all submissions in this TaskRecord');
-        }
-      }
-    }
+    // No challanNo uniqueness enforced
 
     const subTask = taskRecord.subTask.find((s) => s.subTaskId === subTaskId);
     if (!subTask) throw new Error('SubTask not found');
@@ -819,10 +844,11 @@ async function addSubmissionToSubTask(taskId, subTaskId, submissionData, imageFi
  * Edit an existing submission for a subTask.
  *
  * Accepts and updates 'locationStatus' ('warehouse' | 'missing').
- * FIX 1: submissionIndex is now correctly received from the controller.
- * FIX 2: when no new file is uploaded and no challanPhotoPath is sent in the body,
- *         the existing stored challanPhotoPath is preserved (not overwritten with undefined).
- * FIX 3: challanNo uniqueness check properly excludes the submission being edited.
+ * submissionIndex is now correctly received from the controller.
+ * When no new file is uploaded and no challanPhotoPath is sent in the body,
+ * the existing stored challanPhotoPath is preserved (not overwritten with undefined).
+ * challanNo can be duplicate (no uniqueness enforced).
+ * Allows editing recieverPartyName in submission.
  */
 async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submissionData, imageFile = null) {
 
@@ -836,7 +862,7 @@ async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submi
     const requiredFields = [
       'length',
       'MTR',
-      //'Payment', // Removed Payment
+      // 'Payment', // Removed Payment
       'challanNo',
       'submitterName',
       'locationStatus',
@@ -867,21 +893,7 @@ async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submi
       throw new Error('Invalid submissionIndex');
     }
 
-    // Unique challanNo check — exclude the submission being edited (by subTaskId + index)
-    for (const st of taskRecord.subTask || []) {
-      const submissions = Array.isArray(st.submission) ? st.submission : [];
-      for (let idx = 0; idx < submissions.length; idx++) {
-        const sub = submissions[idx];
-        // Skip the current submission itself
-        if (st.subTaskId === subTaskId && idx === submissionIndex) continue;
-        if (
-          String(sub.challanNo).trim().toLowerCase() ===
-          String(submissionData.challanNo).trim().toLowerCase()
-        ) {
-          throw new Error('challanNo must be unique among all submissions in this TaskRecord');
-        }
-      }
-    }
+    // No challanNo uniqueness enforced
 
     // Determine challanPhotoPath to save
     // Priority: 1) new uploaded file path (set by controller), 2) existing path sent from frontend body,
@@ -895,16 +907,22 @@ async function editSubmissionOfSubTask(taskId, subTaskId, submissionIndex, submi
       throw new Error('challanPhotoPath is required — provide a new photo or ensure an existing one is on record');
     }
 
-    // Build updated submission WITHOUT fabricPartyName, recieverPartyName, or savedSinkage
+    // Build updated submission WITH recieverPartyName (optional field)
     const updatedSubmission = {
       length: submissionData.length,
       MTR: submissionData.MTR,
-      //Payment: submissionData.Payment, // Removed Payment
+      // Payment: submissionData.Payment, // Removed Payment
       challanNo: submissionData.challanNo,
       challanPhotoPath, // Preserved/correctly set
       submitterName: submissionData.submitterName,
       locationStatus: submissionData.locationStatus, // Include/update locationStatus
+      recieverPartyName: submissionData.recieverPartyName !== undefined ? submissionData.recieverPartyName : undefined,
     };
+
+    // Remove undefined recieverPartyName if not provided
+    if (updatedSubmission.recieverPartyName === undefined) {
+      delete updatedSubmission.recieverPartyName;
+    }
 
     subTask.submission[submissionIndex] = updatedSubmission;
     await taskRecord.save();

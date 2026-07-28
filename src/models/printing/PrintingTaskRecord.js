@@ -14,7 +14,6 @@ const submissionSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-      unique: true // Ensures challanNo is unique among all submissions collection-wide
     },
     challanPhotoPath: {
       type: String,
@@ -30,6 +29,12 @@ const submissionSchema = new mongoose.Schema(
       type: String,
       enum: ['warehouse', 'missing'],
       required: true,
+    },
+    // Add recieverPartyName in submission
+    recieverPartyName: {
+      type: String,
+      required: false,
+      trim: true
     }
   },
   { _id: false }
