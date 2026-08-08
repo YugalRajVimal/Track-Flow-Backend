@@ -106,7 +106,7 @@ const subTaskSchema = new mongoose.Schema(
   { _id: false }
 );
 
-const taskRecordSchema = new mongoose.Schema(
+const productionManagementRecordSchema = new mongoose.Schema(
   {
     taskId: {
       type: String,
@@ -212,4 +212,4 @@ const taskRecordSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('PrintingTaskRecord', taskRecordSchema);
+module.exports = mongoose.model('ProductionManagementRecord', productionManagementRecordSchema);

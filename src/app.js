@@ -37,6 +37,11 @@ const printingColorChemicalDataRoutes = require('./routes/printing/printingColor
 
 const printingColorChemicalRoutes = require('./routes/printing/printingColorChemical.routes');
 const printingPaymentRecordRoutes = require('./routes/printing/printingPaymentRecord.routes');
+const productionManagementDataRoutes = require('./routes/productionManagement/productionManagementData.routes');
+const styleAverageDataRoutes = require('./routes/productionManagement/styleAverage.routes');
+const productionManagementRecordRoutes = require('./routes/productionManagement/productionManagementRecord.routes');
+
+
 
 
 
@@ -148,6 +153,16 @@ app.use(`${API_PREFIX}/printing/color-chemical-data`, printingColorChemicalDataR
 app.use(`${API_PREFIX}/printing/color-chemicals`, printingColorChemicalRoutes);
 
 app.use(`${API_PREFIX}/printing/payment-records`, printingPaymentRecordRoutes);
+
+// Production Management Data routes
+
+app.use(`${API_PREFIX}/production-management-data`, productionManagementDataRoutes);
+app.use(`${API_PREFIX}/style-average`,styleAverageDataRoutes );
+// Add new productionManagementRecord routes
+app.use(`${API_PREFIX}/production-management-record`, productionManagementRecordRoutes);
+
+
+
 
 // ─── Error Handling ─────────────────────────────────────────────────────────
 app.use(notFound);

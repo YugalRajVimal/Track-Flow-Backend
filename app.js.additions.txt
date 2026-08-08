@@ -1,0 +1,44 @@
+Add these lines to app.js (alongside your existing productionManagementDataRoutes require):
+
+// near the top, with the other route requires:
+const productionManagementRecordRoutes = require('./routes/productionManagement/productionManagementRecord.routes');
+const styleAverageRoutes = require('./routes/productionManagement/styleAverage.routes');
+
+// near the other app.use(...) mounts, alongside production-management-data:
+app.use(`${API_PREFIX}/production-management-record`, productionManagementRecordRoutes);
+app.use(`${API_PREFIX}/style-average`, styleAverageRoutes);
+
+Full resulting endpoint surface:
+  POST   /api/v1/production-management-record/builty-in
+  POST   /api/v1/production-management-record/ready-fabric
+  PUT    /api/v1/production-management-record/:taskId
+  GET    /api/v1/production-management-record            (filters: taskType, verificationStatus, readyFabricStatus, dateFrom, dateTo, fabricSupplier, dyerName, fabricType, styleName, page, pageSize)
+  GET    /api/v1/production-management-record/by-task-id?taskId=...
+  GET    /api/v1/production-management-record/:taskId
+  DELETE /api/v1/production-management-record/:taskId
+  POST   /api/v1/production-management-record/:taskId/verify-builty-in         (body: userId, passcode, mtrShort, fabricQuality, remark)
+  POST   /api/v1/production-management-record/:taskId/ready-fabric-status      (body: userId, passcode, status[done|returned], jobRate, remark)
+  GET    /api/v1/production-management-record/cutting/ready-fabric-done        (list of ReadyFabric + status=done, ready to cut)
+  GET    /api/v1/production-management-record/:taskId/cutting/preview?styleCutting=...   (returns styleAverage + expectedPieces)
+  POST   /api/v1/production-management-record/:taskId/cutting                  (multipart: cuttingRegisterPhoto file; body: styleCutting, sizes{S,M,L,XL,XXL,XXXL}, cuttingMasterName, remark, userId)
+  POST   /api/v1/production-management-record/:taskId/fabricator/init          (multipart: file; body: fabricatorName)
+  POST   /api/v1/production-management-record/:taskId/fabricator/receiving    (multipart: file; body: userId, passcode, totalReceivedPieces, ratePerPiece, receiverName, duePieces{S,M,L,XL,XXL,XXXL})
+
+  POST   /api/v1/style-average          (body: styleName, styleCutting, fabricType, styleAverage)
+  GET    /api/v1/style-average          (filters: styleName, styleCutting, fabricType)
+  GET    /api/v1/style-average/lookup?styleName=&styleCutting=&fabricType=
+  GET    /api/v1/style-average/:id
+  PUT    /api/v1/style-average/:id
+  DELETE /api/v1/style-average/:id
+
+IMPORTANT — one dependency I couldn't verify:
+`middleware/imageUploadMiddlware.js` — I referenced an `uploadImageFields` export (multer .fields() for
+multiple named file inputs per request, since Builty In needs 2 photo slots and edits need up to 3).
+Your existing file only exports `uploadImage` (single file). If it doesn't already have a multi-field
+variant, add this to that file using the same storage/multer config you already have for `uploadImage`:
+
+  const uploadImageFields = (fields) => upload.fields(fields);
+  module.exports = { uploadImage, uploadImageFields };
+
+I didn't touch that file since I don't have its current contents — please paste it if you want me to
+patch it directly instead.
