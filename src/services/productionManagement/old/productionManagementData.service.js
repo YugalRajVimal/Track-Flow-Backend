@@ -43,10 +43,6 @@ async function getTaskDataDropdownValues() {
         cuttingMasterName: [],
         fabricatorName: [],
         receiverName: [],
-        supplierName: [],
-        items: [],
-        packingMaterial: [],
-        finishing: [],
       };
     }
     console.log('[ProductionManagementDataService] Found TaskData:', taskData._id);
@@ -65,10 +61,6 @@ async function getTaskDataDropdownValues() {
       cuttingMasterName: Array.isArray(taskData.cuttingMasterName) ? taskData.cuttingMasterName : [],
       fabricatorName: Array.isArray(taskData.fabricatorName) ? taskData.fabricatorName : [],
       receiverName: Array.isArray(taskData.receiverName) ? taskData.receiverName : [],
-      supplierName: Array.isArray(taskData.supplierName) ? taskData.supplierName : [],
-      items: Array.isArray(taskData.items) ? taskData.items : [],
-      packingMaterial: Array.isArray(taskData.packingMaterial) ? taskData.packingMaterial : [],
-      finishing: Array.isArray(taskData.finishing) ? taskData.finishing : [],
     };
   } catch (error) {
     console.error('[ProductionManagementDataService] Error fetching dropdown values:', error);
@@ -99,10 +91,6 @@ async function createTaskDataDropdown(data) {
       cuttingMasterName: ensureArray(data.cuttingMasterName, 'string'),
       fabricatorName: ensureArray(data.fabricatorName, 'string'),
       receiverName: ensureArray(data.receiverName, 'string'),
-      supplierName: ensureArray(data.supplierName, 'string'),
-      items: ensureArray(data.items, 'string'),
-      packingMaterial: ensureArray(data.packingMaterial, 'string'),
-      finishing: ensureArray(data.finishing, 'string'),
     };
     console.log('[ProductionManagementDataService] Creating/Updating TaskData with sanitized data:', sanitizedData);
 
@@ -148,10 +136,6 @@ async function updateTaskDataDropdown(id, data) {
       cuttingMasterName: ensureArray(data.cuttingMasterName, 'string'),
       fabricatorName: ensureArray(data.fabricatorName, 'string'),
       receiverName: ensureArray(data.receiverName, 'string'),
-      supplierName: ensureArray(data.supplierName, 'string'),
-      items: ensureArray(data.items, 'string'),
-      packingMaterial: ensureArray(data.packingMaterial, 'string'),
-      finishing: ensureArray(data.finishing, 'string'),
     };
     console.log(`[ProductionManagementDataService] Updating TaskData with id: ${id} sanitized data:`, sanitizedData);
 

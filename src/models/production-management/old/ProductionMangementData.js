@@ -11,12 +11,6 @@ const productionManagementDataSchema = new mongoose.Schema(
     builtyIdCounter: {
       type: Number,
     },
-    rawMaterialInCounter: {
-      type: Number,
-    },
-    costManagementCounter: {
-      type: Number,
-    },
     fabricSupplier: [
       { type: String, trim: true, required: true }
     ],
@@ -51,20 +45,6 @@ const productionManagementDataSchema = new mongoose.Schema(
       { type: String, trim: true, required: true }
     ],
     receiverName: [
-      { type: String, trim: true, required: true }
-    ],
-
-    // ── Added for Raw Materials In / Cost Management pages ────────────────
-    supplierName: [
-      { type: String, trim: true, required: true }
-    ],
-    items: [
-      { type: String, trim: true, required: true }
-    ],
-    packingMaterial: [
-      { type: String, trim: true, required: true }
-    ],
-    finishing: [
       { type: String, trim: true, required: true }
     ]
   },
