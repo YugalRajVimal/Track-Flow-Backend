@@ -103,11 +103,34 @@ async function editCostManagement(recordId, data = {}) {
 }
 
 async function fetchCostManagements(filter = {}) {
-  const { styleName, fabricType, printType, page = 1, pageSize = 20 } = filter;
+  const { 
+    styleName, 
+    fabricType, 
+    printType, 
+    page = 1, 
+    pageSize = 20,
+    fromDate,   // Expecting ISO string or yyyy-mm-dd
+    toDate      // Expecting ISO string or yyyy-mm-dd
+  } = filter;
   const query = {};
   if (styleName) query.styleName = styleName;
   if (fabricType) query.fabricType = fabricType;
   if (printType) query.printType = printType;
+
+  // Add date filter if provided
+  if (fromDate || toDate) {
+    query.createdAt = {};
+    if (fromDate) {
+      query.createdAt.$gte = new Date(fromDate);
+    }
+    if (toDate) {
+      // Add one day if format is yyyy-mm-dd
+      // To support up-to end of day for toDate (exclusive), add 1 day and use $lt
+      const toDateObj = new Date(toDate);
+      toDateObj.setDate(toDateObj.getDate() + 1);
+      query.createdAt.$lt = toDateObj;
+    }
+  }
 
   const pageNum = Math.max(parseInt(page, 10) || 1, 1);
   const size = Math.max(parseInt(pageSize, 10) || 20, 1);

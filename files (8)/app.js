@@ -38,12 +38,15 @@ const printingColorChemicalDataRoutes = require('./routes/printing/printingColor
 const printingColorChemicalRoutes = require('./routes/printing/printingColorChemical.routes');
 const printingPaymentRecordRoutes = require('./routes/printing/printingPaymentRecord.routes');
 const productionManagementDataRoutes = require('./routes/productionManagement/productionManagementData.routes');
-
-// Production Management — Record (Builty In / Ready Fabric / Cutting / Fabricator-Dispatch) + Style Average
+const styleAverageDataRoutes = require('./routes/productionManagement/styleAverage.routes');
 const productionManagementRecordRoutes = require('./routes/productionManagement/productionManagementRecord.routes');
-const styleAverageRoutes = require('./routes/productionManagement/styleAverage.routes');
+
 const rawMaterialInRoutes = require('./routes/productionManagement/rawMaterialIn.routes');
 const costManagementRoutes = require('./routes/productionManagement/costManagement.routes');
+
+const jobRateRoutes = require('./routes/productionManagement/jobRate.routes');
+const fabricatorRateRoutes = require('./routes/productionManagement/fabricatorRate.routes');
+
 
 
 
@@ -51,7 +54,15 @@ const costManagementRoutes = require('./routes/productionManagement/costManageme
 const app = express();
 
 // ─── Security Middleware ────────────────────────────────────────────────────
-app.use(helmet());
+// app.use(helmet());
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: {
+      policy: 'cross-origin',
+    },
+  })
+);
 
 app.use(
   cors({
@@ -159,18 +170,24 @@ app.use(`${API_PREFIX}/printing/payment-records`, printingPaymentRecordRoutes);
 // Production Management Data routes
 
 app.use(`${API_PREFIX}/production-management-data`, productionManagementDataRoutes);
-
-// Production Management Record routes (Builty In / Ready Fabric / Cutting / Fabricator-Dispatch)
+app.use(`${API_PREFIX}/style-average`,styleAverageDataRoutes );
+// Add new productionManagementRecord routes
 app.use(`${API_PREFIX}/production-management-record`, productionManagementRecordRoutes);
-
-// Style Average routes (admin-managed styleName + styleCutting + fabricType -> mtr/piece lookup)
-app.use(`${API_PREFIX}/style-average`, styleAverageRoutes);
 
 // Raw Materials In routes (independent module)
 app.use(`${API_PREFIX}/raw-material-in`, rawMaterialInRoutes);
 
 // Cost Management routes (independent module)
 app.use(`${API_PREFIX}/cost-management`, costManagementRoutes);
+
+
+// Add new productionManagement job rate routes
+app.use(`${API_PREFIX}/production-management/job-rate`, jobRateRoutes);
+
+// Add new productionManagement fabricator rate ("Rate per Piece") routes
+app.use(`${API_PREFIX}/production-management/fabricator-rate`, fabricatorRateRoutes);
+
+
 
 
 // ─── Error Handling ─────────────────────────────────────────────────────────

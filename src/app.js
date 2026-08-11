@@ -32,10 +32,11 @@ const printingTaskRoutes = require('./routes/printing/printingTask.routes');
 
 const printingSubmissionPaymentDataRoutes = require('./routes/printing/printingSubmissionPaymentData.routes');
 const printingTaskDataRoutes = require('./routes/printing/printingTaskData.routes');
-const printingPaymentDataRoutes = require('./routes/printing/printingPaymentData.routes');
 const printingColorChemicalDataRoutes = require('./routes/printing/printingColorChemicalDataRoutes');
 
 const printingColorChemicalRoutes = require('./routes/printing/printingColorChemical.routes');
+const printingPaymentDataRoutes = require('./routes/printing/printingPaymentData.routes');
+
 const printingPaymentRecordRoutes = require('./routes/printing/printingPaymentRecord.routes');
 const productionManagementDataRoutes = require('./routes/productionManagement/productionManagementData.routes');
 const styleAverageDataRoutes = require('./routes/productionManagement/styleAverage.routes');
@@ -44,13 +45,30 @@ const productionManagementRecordRoutes = require('./routes/productionManagement/
 const rawMaterialInRoutes = require('./routes/productionManagement/rawMaterialIn.routes');
 const costManagementRoutes = require('./routes/productionManagement/costManagement.routes');
 
+const jobRateRoutes = require('./routes/productionManagement/jobRate.routes');
+const fabricatorRateRoutes = require('./routes/productionManagement/fabricatorRate.routes');
+
+
+const productionPaymentDataRoutes = require('./routes/productionManagement/productionPaymentData.routes');
+
+const productionPaymentRecordRoutes = require('./routes/productionManagement/productionPaymentRecord.routes');
+
+
 
 
 
 const app = express();
 
 // ─── Security Middleware ────────────────────────────────────────────────────
-app.use(helmet());
+// app.use(helmet());
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: {
+      policy: 'cross-origin',
+    },
+  })
+);
 
 app.use(
   cors({
@@ -146,13 +164,13 @@ app.use(`${API_PREFIX}/printing/tasks`, printingTaskRoutes);
 app.use(`${API_PREFIX}/printing/submission-payment-data`, printingSubmissionPaymentDataRoutes);
 
 app.use(`${API_PREFIX}/printing/task-data`, printingTaskDataRoutes);
-// Add new paymentData routes
-app.use(`${API_PREFIX}/printing/payment-data`, printingPaymentDataRoutes);
+
 // Add new colorChemicalData routes
 app.use(`${API_PREFIX}/printing/color-chemical-data`, printingColorChemicalDataRoutes);
 
 app.use(`${API_PREFIX}/printing/color-chemicals`, printingColorChemicalRoutes);
-
+// Add new paymentData routes
+app.use(`${API_PREFIX}/printing/payment-data`, printingPaymentDataRoutes);
 app.use(`${API_PREFIX}/printing/payment-records`, printingPaymentRecordRoutes);
 
 // Production Management Data routes
@@ -169,6 +187,15 @@ app.use(`${API_PREFIX}/raw-material-in`, rawMaterialInRoutes);
 app.use(`${API_PREFIX}/cost-management`, costManagementRoutes);
 
 
+// Add new productionManagement job rate routes
+app.use(`${API_PREFIX}/production-management/job-rate`, jobRateRoutes);
+
+app.use(`${API_PREFIX}/production-management/fabricator-rate`, fabricatorRateRoutes);
+
+
+
+app.use(`${API_PREFIX}/production/payment-data`, productionPaymentDataRoutes);
+app.use(`${API_PREFIX}/production/payment-records`, productionPaymentRecordRoutes);
 
 
 // ─── Error Handling ─────────────────────────────────────────────────────────
