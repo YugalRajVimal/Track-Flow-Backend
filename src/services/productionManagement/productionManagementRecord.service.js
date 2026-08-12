@@ -752,7 +752,7 @@ async function verifyBuiltyIn(taskId, { userId, passcode, mtrShort, fabricQualit
   const record = await ProductionManagementRecord.findOne({ taskId });
   if (!record) throw new Error('Record not found.');
   if (record.taskType !== 'BuiltyIn') throw new Error('Record is not a Builty In task.');
-  if (record.verificationStatus !== 'pending') {
+  if (record.verificationStatus !== 'Verification Pending') {
     throw new Error(`Record is already '${record.verificationStatus}'.`);
   }
 
@@ -794,7 +794,7 @@ async function updateReadyFabricStatus(taskId, { userId, passcode, status, jobRa
   if (!record) throw new Error('Record not found.');
   if (record.taskType !== 'ReadyFabric') throw new Error('Record is not a Ready Fabric task.');
   if (record.readyFabricStatus !== 'pending') {
-    throw new Error(`Record is already '${record.readyFabricStatus}'.`);
+    throw new Error(`Record is already - '${record.readyFabricStatus}'.`);
   }
   if (!['done', 'returned'].includes(status)) {
     throw new Error("status must be 'done' or 'returned'.");
