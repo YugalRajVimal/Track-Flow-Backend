@@ -752,7 +752,7 @@ async function verifyBuiltyIn(taskId, { userId, passcode, mtrShort, fabricQualit
   const record = await ProductionManagementRecord.findOne({ taskId });
   if (!record) throw new Error('Record not found.');
   if (record.taskType !== 'BuiltyIn') throw new Error('Record is not a Builty In task.');
-  if (record.verificationStatus !== 'Verification Pending') {
+  if (record.verificationStatus !== 'pending') {
     throw new Error(`Record is already '${record.verificationStatus}'.`);
   }
 
