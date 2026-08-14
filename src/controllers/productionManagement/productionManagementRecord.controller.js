@@ -1,3 +1,5 @@
+
+
 // const recordService = require('../../services/productionManagement/productionManagementRecord.service');
 // const fs = require('fs');
 // const path = require('path');
@@ -218,14 +220,26 @@
 // }
 
 // // ─────────────────────────────────────────────────────────────────────────
-// // Page 3 — Fabricator / Dispatch
+// // Page 3 — Fabricator / Dispatch (multi-fabricator, partial receiving)
 // // ─────────────────────────────────────────────────────────────────────────
 
-// async function initFabricatorController(req, res) {
+// async function fetchFabricatorPoolController(req, res) {
+//   try {
+//     const { taskId } = req.params;
+//     const pool = await recordService.fetchUnassignedPool(taskId);
+//     res.json({ success: true, data: pool });
+//   } catch (error) {
+//     res.status(400).json({ success: false, message: error.message });
+//   }
+// }
+
+// async function assignFabricatorController(req, res) {
 //   const filesToDelete = [];
 //   try {
 //     const { taskId } = req.params;
-//     const { fabricatorName } = req.body;
+//     const { fabricatorName, styleCutting, ratePerPiece } = req.body;
+//     let { assignedSizes } = req.body;
+//     if (typeof assignedSizes === 'string') assignedSizes = JSON.parse(assignedSizes);
 
 //     let fabricatorReceiverChPhoto;
 //     if (req.file) {
@@ -233,7 +247,9 @@
 //       filesToDelete.push(fileDeletePath(req.file));
 //     }
 
-//     const updated = await recordService.initFabricator(taskId, { fabricatorName, fabricatorReceiverChPhoto });
+//     const updated = await recordService.assignFabricator(taskId, {
+//       fabricatorName, fabricatorReceiverChPhoto, styleCutting, assignedSizes, ratePerPiece,
+//     });
 //     res.json({ success: true, data: updated });
 //   } catch (error) {
 //     filesToDelete.forEach(safeUnlink);
@@ -244,9 +260,10 @@
 // async function addFabricatorReceivingController(req, res) {
 //   const filesToDelete = [];
 //   try {
-//     const { taskId } = req.params;
-//     let { userId, passcode, totalReceivedPieces, ratePerPiece, receiverName, duePieces } = req.body;
-//     if (typeof duePieces === 'string') duePieces = JSON.parse(duePieces);
+//     const { taskId, fabricatorId } = req.params;
+//     let {  passcode, receiverName, receivedSizes } = req.body;
+//     const userId = req.user._id;
+//     if (typeof receivedSizes === 'string') receivedSizes = JSON.parse(receivedSizes);
 
 //     let receivingEntryPhoto;
 //     if (req.file) {
@@ -254,8 +271,8 @@
 //       filesToDelete.push(fileDeletePath(req.file));
 //     }
 
-//     const updated = await recordService.addFabricatorReceiving(taskId, {
-//       userId, passcode, totalReceivedPieces, ratePerPiece, receivingEntryPhoto, receiverName, duePieces,
+//     const updated = await recordService.addFabricatorReceiving(taskId, fabricatorId, {
+//       userId, passcode, receivedSizes, receiverName, receivingEntryPhoto,
 //     });
 //     res.json({ success: true, data: updated });
 //   } catch (error) {
@@ -276,7 +293,8 @@
 //   fetchReadyFabricDoneController,
 //   previewCuttingController,
 //   submitCuttingController,
-//   initFabricatorController,
+//   fetchFabricatorPoolController,
+//   assignFabricatorController,
 //   addFabricatorReceivingController,
 // };
 
@@ -284,7 +302,7 @@
 const recordService = require('../../services/productionManagement/productionManagementRecord.service');
 const fs = require('fs');
 const path = require('path');
-
+ 
 // ── Helper: normalize an uploaded file into a stored path ──────────────────
 function storedPathFor(file) {
   if (!file) return null;
@@ -294,23 +312,23 @@ function storedPathFor(file) {
   }
   return fileName ? `/uploads/${fileName}` : null;
 }
-
+ 
 function fileDeletePath(file) {
   if (!file) return null;
   const fileName = file.filename || (file.originalname || '').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '');
   return fileName ? path.join(__dirname, '..', '..', 'uploads', fileName) : null;
 }
-
+ 
 function safeUnlink(filePath) {
   if (filePath && fs.existsSync(filePath)) {
     try { fs.unlinkSync(filePath); } catch { /* ignore */ }
   }
 }
-
+ 
 // ─────────────────────────────────────────────────────────────────────────
 // Create
 // ─────────────────────────────────────────────────────────────────────────
-
+ 
 /**
  * POST /builty-in  — expects multipart with fields[supplierBillPhoto], fields[dyerReceiverChPhoto]
  * POST /ready-fabric — expects multipart with fields[chPhoto]
@@ -328,7 +346,7 @@ async function createBuiltyInController(req, res) {
       files.dyerReceiverChPhotoPath = storedPathFor(req.files.dyerReceiverChPhoto[0]);
       filesToDelete.push(fileDeletePath(req.files.dyerReceiverChPhoto[0]));
     }
-
+ 
     const created = await recordService.createTask('BuiltyIn', req.body, files);
     res.status(201).json({ success: true, data: created });
   } catch (error) {
@@ -336,7 +354,7 @@ async function createBuiltyInController(req, res) {
     res.status(400).json({ success: false, message: error.message });
   }
 }
-
+ 
 async function createReadyFabricController(req, res) {
   const filesToDelete = [];
   try {
@@ -345,7 +363,7 @@ async function createReadyFabricController(req, res) {
       files.chPhotoPath = storedPathFor(req.files.chPhoto[0]);
       filesToDelete.push(fileDeletePath(req.files.chPhoto[0]));
     }
-
+ 
     const created = await recordService.createTask('ReadyFabric', req.body, files);
     res.status(201).json({ success: true, data: created });
   } catch (error) {
@@ -353,11 +371,11 @@ async function createReadyFabricController(req, res) {
     res.status(400).json({ success: false, message: error.message });
   }
 }
-
+ 
 // ─────────────────────────────────────────────────────────────────────────
 // Edit / Fetch / Delete
 // ─────────────────────────────────────────────────────────────────────────
-
+ 
 async function editTaskController(req, res) {
   const filesToDelete = [];
   try {
@@ -375,7 +393,7 @@ async function editTaskController(req, res) {
       files.chPhotoPath = storedPathFor(req.files.chPhoto[0]);
       filesToDelete.push(fileDeletePath(req.files.chPhoto[0]));
     }
-
+ 
     const updated = await recordService.editTask(taskId, req.body, files);
     res.json({ success: true, data: updated });
   } catch (error) {
@@ -383,7 +401,7 @@ async function editTaskController(req, res) {
     res.status(400).json({ success: false, message: error.message });
   }
 }
-
+ 
 async function fetchTasksController(req, res) {
   try {
     const result = await recordService.fetchTasks(req.query);
@@ -392,7 +410,7 @@ async function fetchTasksController(req, res) {
     res.status(500).json({ success: false, message: error.message });
   }
 }
-
+ 
 async function fetchTaskByTaskIdController(req, res) {
   try {
     const taskId = req.params.taskId || req.query.taskId;
@@ -404,7 +422,7 @@ async function fetchTaskByTaskIdController(req, res) {
     res.status(500).json({ success: false, message: error.message });
   }
 }
-
+ 
 async function deleteTaskController(req, res) {
   try {
     const { taskId } = req.params;
@@ -415,11 +433,11 @@ async function deleteTaskController(req, res) {
     res.status(400).json({ success: false, message: error.message });
   }
 }
-
+ 
 // ─────────────────────────────────────────────────────────────────────────
 // Builty In → Verification (passcode gated)
 // ─────────────────────────────────────────────────────────────────────────
-
+ 
 async function verifyBuiltyInController(req, res) {
   try {
     const { taskId } = req.params;
@@ -435,11 +453,11 @@ async function verifyBuiltyInController(req, res) {
     res.status(400).json({ success: false, message: error.message });
   }
 }
-
+ 
 // ─────────────────────────────────────────────────────────────────────────
 // Ready Fabric → Done / Returned (passcode gated)
 // ─────────────────────────────────────────────────────────────────────────
-
+ 
 async function updateReadyFabricStatusController(req, res) {
   try {
     const { taskId } = req.params;
@@ -451,11 +469,11 @@ async function updateReadyFabricStatusController(req, res) {
     res.status(400).json({ success: false, message: error.message });
   }
 }
-
+ 
 // ─────────────────────────────────────────────────────────────────────────
 // Page 2 — Cutting
 // ─────────────────────────────────────────────────────────────────────────
-
+ 
 async function fetchReadyFabricDoneController(req, res) {
   try {
     const result = await recordService.fetchReadyFabricDoneRecords(req.query);
@@ -464,7 +482,7 @@ async function fetchReadyFabricDoneController(req, res) {
     res.status(500).json({ success: false, message: error.message });
   }
 }
-
+ 
 async function previewCuttingController(req, res) {
   try {
     const { taskId } = req.params;
@@ -476,22 +494,22 @@ async function previewCuttingController(req, res) {
     res.status(400).json({ success: false, message: error.message });
   }
 }
-
+ 
 async function submitCuttingController(req, res) {
   const filesToDelete = [];
   try {
     const { taskId } = req.params;
-    let { styleCutting, sizes, cuttingMasterName, remark, userId } = req.body;
+    let { styleCutting, sizes, cuttingMasterName, remark, userId, date } = req.body;
     if (typeof sizes === 'string') sizes = JSON.parse(sizes);
-
+ 
     let cuttingRegisterPhoto;
     if (req.file) {
       cuttingRegisterPhoto = storedPathFor(req.file);
       filesToDelete.push(fileDeletePath(req.file));
     }
-
+ 
     const updated = await recordService.submitCutting(taskId, {
-      userId, styleCutting, sizes, cuttingRegisterPhoto, cuttingMasterName, remark,
+      userId, styleCutting, sizes, cuttingRegisterPhoto, cuttingMasterName, remark, date,
     });
     res.json({ success: true, data: updated });
   } catch (error) {
@@ -499,11 +517,11 @@ async function submitCuttingController(req, res) {
     res.status(400).json({ success: false, message: error.message });
   }
 }
-
+ 
 // ─────────────────────────────────────────────────────────────────────────
 // Page 3 — Fabricator / Dispatch (multi-fabricator, partial receiving)
 // ─────────────────────────────────────────────────────────────────────────
-
+ 
 async function fetchFabricatorPoolController(req, res) {
   try {
     const { taskId } = req.params;
@@ -513,23 +531,23 @@ async function fetchFabricatorPoolController(req, res) {
     res.status(400).json({ success: false, message: error.message });
   }
 }
-
+ 
 async function assignFabricatorController(req, res) {
   const filesToDelete = [];
   try {
     const { taskId } = req.params;
-    const { fabricatorName, styleCutting, ratePerPiece } = req.body;
+    const { fabricatorName, styleCutting, ratePerPiece, date } = req.body;
     let { assignedSizes } = req.body;
     if (typeof assignedSizes === 'string') assignedSizes = JSON.parse(assignedSizes);
-
+ 
     let fabricatorReceiverChPhoto;
     if (req.file) {
       fabricatorReceiverChPhoto = storedPathFor(req.file);
       filesToDelete.push(fileDeletePath(req.file));
     }
-
+ 
     const updated = await recordService.assignFabricator(taskId, {
-      fabricatorName, fabricatorReceiverChPhoto, styleCutting, assignedSizes, ratePerPiece,
+      fabricatorName, fabricatorReceiverChPhoto, styleCutting, assignedSizes, ratePerPiece, date,
     });
     res.json({ success: true, data: updated });
   } catch (error) {
@@ -537,23 +555,23 @@ async function assignFabricatorController(req, res) {
     res.status(400).json({ success: false, message: error.message });
   }
 }
-
+ 
 async function addFabricatorReceivingController(req, res) {
   const filesToDelete = [];
   try {
     const { taskId, fabricatorId } = req.params;
-    let {  passcode, receiverName, receivedSizes } = req.body;
+    let {  passcode, receiverName, receivedSizes, date } = req.body;
     const userId = req.user._id;
     if (typeof receivedSizes === 'string') receivedSizes = JSON.parse(receivedSizes);
-
+ 
     let receivingEntryPhoto;
     if (req.file) {
       receivingEntryPhoto = storedPathFor(req.file);
       filesToDelete.push(fileDeletePath(req.file));
     }
-
+ 
     const updated = await recordService.addFabricatorReceiving(taskId, fabricatorId, {
-      userId, passcode, receivedSizes, receiverName, receivingEntryPhoto,
+      userId, passcode, receivedSizes, receiverName, receivingEntryPhoto, date,
     });
     res.json({ success: true, data: updated });
   } catch (error) {
@@ -561,7 +579,7 @@ async function addFabricatorReceivingController(req, res) {
     res.status(400).json({ success: false, message: error.message });
   }
 }
-
+ 
 module.exports = {
   createBuiltyInController,
   createReadyFabricController,
@@ -578,3 +596,4 @@ module.exports = {
   assignFabricatorController,
   addFabricatorReceivingController,
 };
+ 
