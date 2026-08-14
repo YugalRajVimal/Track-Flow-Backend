@@ -18,8 +18,9 @@ async function getNextCounter() {
 
 async function createRawMaterialIn(data, files = {}) {
   const { supplierName, items, amount, paymentMode, receiverName, remark, date } = data;
-  if (!supplierName || !items || amount === undefined || !paymentMode || !receiverName) {
-    throw new Error('supplierName, items, amount, paymentMode and receiverName are all required.');
+  // amount is not mandatory anymore
+  if (!supplierName || !items || !paymentMode || !receiverName) {
+    throw new Error('supplierName, items, paymentMode and receiverName are all required.');
   }
   if (!['Cash', 'UPI', 'Due'].includes(paymentMode)) {
     throw new Error("paymentMode must be one of 'Cash', 'UPI', 'Due'.");
@@ -32,7 +33,7 @@ async function createRawMaterialIn(data, files = {}) {
     recordId,
     supplierName: String(supplierName).trim(),
     items: String(items).trim(),
-    amount: Number(amount),
+    amount: amount !== undefined && amount !== null && amount !== "" ? Number(amount) : undefined,
     paymentMode,
     receiverName: String(receiverName).trim(),
     chPhoto: files.chPhotoPath || undefined,
