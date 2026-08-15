@@ -53,6 +53,9 @@ const productionPaymentDataRoutes = require('./routes/productionManagement/produ
 
 const productionPaymentRecordRoutes = require('./routes/productionManagement/productionPaymentRecord.routes');
 
+const challanPlatformConfigRoutes = require('./routes/productionManagement/challanManagement/challanPlatformConfig.routes');
+const challanEntryRoutes = require('./routes/productionManagement/challanManagement/challanEntry.routes');
+
 
 
 
@@ -196,6 +199,10 @@ app.use(`${API_PREFIX}/production-management/fabricator-rate`, fabricatorRateRou
 
 app.use(`${API_PREFIX}/production/payment-data`, productionPaymentDataRoutes);
 app.use(`${API_PREFIX}/production/payment-records`, productionPaymentRecordRoutes);
+
+app.use(`${API_PREFIX}/challan/platform-config`, challanPlatformConfigRoutes);
+app.use(`${API_PREFIX}/challan/entries`, challanEntryRoutes);
+
 
 
 // ─── Error Handling ─────────────────────────────────────────────────────────
