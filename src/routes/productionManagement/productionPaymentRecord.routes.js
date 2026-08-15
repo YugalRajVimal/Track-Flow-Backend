@@ -1,9 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const paymentRecordController = require('../../controllers/productionManagement/productionPaymentRecord.controller');
+const { uploadImageFields } = require('../../middleware/imageUploadMiddlware');
+
+
 
 // Create a new payment record
-router.post('/', paymentRecordController.createPaymentRecord);
+router.post('/',uploadImageFields([{ name: 'photoUpload', maxCount: 1 }]), paymentRecordController.createPaymentRecord);
 
 // Get all payment records (optionally filtered by query)
 router.get('/', paymentRecordController.getPaymentRecords);
@@ -12,7 +15,7 @@ router.get('/', paymentRecordController.getPaymentRecords);
 router.get('/:id', paymentRecordController.getPaymentRecordById);
 
 // Update a payment record by ID
-router.put('/:id', paymentRecordController.updatePaymentRecord);
+router.put('/:id',uploadImageFields([{ name: 'photoUpload', maxCount: 1 }]), paymentRecordController.updatePaymentRecord);
 
 // Delete a payment record by ID
 router.delete('/:id', paymentRecordController.deletePaymentRecord);
