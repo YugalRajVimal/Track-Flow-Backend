@@ -55,6 +55,8 @@ const productionPaymentRecordRoutes = require('./routes/productionManagement/pro
 
 const challanPlatformConfigRoutes = require('./routes/productionManagement/challanManagement/challanPlatformConfig.routes');
 const challanEntryRoutes = require('./routes/productionManagement/challanManagement/challanEntry.routes');
+const challanManagementDataRoutes = require('./routes/productionManagement/challanManagement/challanManagementData.routes');
+
 
 
 
@@ -202,6 +204,8 @@ app.use(`${API_PREFIX}/production/payment-records`, productionPaymentRecordRoute
 
 app.use(`${API_PREFIX}/challan/platform-config`, challanPlatformConfigRoutes);
 app.use(`${API_PREFIX}/challan/entries`, challanEntryRoutes);
+app.use(`${API_PREFIX}/challan/management-data`, challanManagementDataRoutes);
+
 
 
 

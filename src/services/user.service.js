@@ -29,7 +29,7 @@ const createUser = async (data, actorId, meta) => {
     throw err;
   }
 
-  // Accept and persist paymentDepartmentPasscode if provided
+  // Accept and persist paymentDepartmentPasscode and verificationPassscode if provided
   const user = await User.create(data);
   await createAuditLog({
     actionType: 'create',
@@ -41,7 +41,8 @@ const createUser = async (data, actorId, meta) => {
       email: user.email, 
       role: user.role, 
       passcode: user.passcode, // include passcode for logging
-      paymentDepartmentPasscode: user.paymentDepartmentPasscode // log paymentDepartmentPasscode
+      paymentDepartmentPasscode: user.paymentDepartmentPasscode, // log paymentDepartmentPasscode
+      verificationPassscode: user.verificationPassscode // log verificationPassscode
     },
     ...meta,
   });
@@ -61,7 +62,8 @@ const updateUser = async (id, data, actorId, meta) => {
     email: user.email, 
     role: user.role,
     passcode: user.passcode, // include passcode in old data
-    paymentDepartmentPasscode: user.paymentDepartmentPasscode // log old paymentDepartmentPasscode
+    paymentDepartmentPasscode: user.paymentDepartmentPasscode, // log old paymentDepartmentPasscode
+    verificationPassscode: user.verificationPassscode // log old verificationPassscode
   };
 
   if (data.email && data.email !== user.email) {
@@ -83,9 +85,14 @@ const updateUser = async (id, data, actorId, meta) => {
     user.paymentDepartmentPasscode = data.paymentDepartmentPasscode;
   }
 
-  // Update other fields (excluding passcode and paymentDepartmentPasscode if present)
+  // Only update verificationPassscode if it's present in the data
+  if (Object.prototype.hasOwnProperty.call(data, 'verificationPassscode')) {
+    user.verificationPassscode = data.verificationPassscode;
+  }
+
+  // Update other fields (excluding passcode, paymentDepartmentPasscode, and verificationPassscode)
   Object.keys(data).forEach(key => {
-    if (key !== 'passcode' && key !== 'paymentDepartmentPasscode') {
+    if (key !== 'passcode' && key !== 'paymentDepartmentPasscode' && key !== 'verificationPassscode') {
       user[key] = data[key];
     }
   });
@@ -103,7 +110,8 @@ const updateUser = async (id, data, actorId, meta) => {
       email: user.email, 
       role: user.role,
       passcode: user.passcode, // include passcode in new data
-      paymentDepartmentPasscode: user.paymentDepartmentPasscode // log new paymentDepartmentPasscode
+      paymentDepartmentPasscode: user.paymentDepartmentPasscode, // log new paymentDepartmentPasscode
+      verificationPassscode: user.verificationPassscode // log new verificationPassscode
     },
     ...meta,
   });
@@ -128,7 +136,8 @@ const deleteUser = async (id, actorId, meta) => {
       name: user.name, 
       email: user.email, 
       role: user.role,
-      paymentDepartmentPasscode: user.paymentDepartmentPasscode // add for delete logs
+      paymentDepartmentPasscode: user.paymentDepartmentPasscode, // add for delete logs
+      verificationPassscode: user.verificationPassscode // add for delete logs
     },
     ...meta,
   });
@@ -195,6 +204,46 @@ const verifyPaymentDepartmentPasscode = async (userParam, paymentDepartmentPassc
   return dbUser;
 };
 
+/**
+ * Verifies whether the provided verification passcode matches the user's hashed verificationPassscode.
+ * Returns the user object if matched, otherwise throws an error.
+ * @param {Object} userParam - The user object (typically from req.user)
+ * @param {string} verificationPasscode - The passcode to verify (plaintext)
+ * @returns {Promise<User>} - Resolves with user if valid, else throws Error.
+ */
+const verifyVerificationPasscode = async (userParam, verificationPasscode) => {
+  if (!verificationPasscode || typeof verificationPasscode !== 'string') {
+    const err = new Error('Verification passcode is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Fetch the user from DB using the ID from the user parameter, selecting verificationPassscode for comparison
+  const dbUser = await User.findById(userParam._id).select('+verificationPassscode');
+  if (!dbUser) {
+    const err = new Error('User not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Compare using the model's compareVerificationPassscode method (supports hashed passcodes)
+  if (typeof dbUser.compareVerificationPassscode !== 'function') {
+    // Safeguard if the method is not implemented
+    const err = new Error('Verification method not implemented on User model');
+    err.statusCode = 500;
+    throw err;
+  }
+
+  const isValid = await dbUser.compareVerificationPassscode(verificationPasscode.trim());
+  if (!isValid) {
+    const err = new Error('Invalid verification passcode');
+    err.statusCode = 401;
+    throw err;
+  }
+  return dbUser;
+};
+
+
 
 /**
  * Verifies whether the given userId and passcode match a user.
@@ -204,4 +253,4 @@ const verifyPaymentDepartmentPasscode = async (userParam, paymentDepartmentPassc
  * @returns {Promise<User>} - Resolves with user if valid, else throws Error.
  */
 
-module.exports = { getUsers, createUser, updateUser, deleteUser, updateUserStatus, verifyPaymentDepartmentPasscode };
+module.exports = { getUsers, createUser, updateUser, deleteUser, updateUserStatus, verifyPaymentDepartmentPasscode, verifyVerificationPasscode };

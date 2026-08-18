@@ -6,7 +6,7 @@ const { createUserValidator, updateUserValidator } = require('../validators/user
 const { validate } = require('../middleware/validate');
 
 // All admin-only routes use authenticate+authorize('admin')
-// But verify-payment-department-passcode should be PUBLIC (no auth)
+// But verify-payment-department-passcode and verify-verification-passcode routes should be role-specific
 
 // Protected admin-only routes
 router.get('/', authenticate, authorize('admin'), ctrl.getUsers);
@@ -15,11 +15,13 @@ router.put('/:id', authenticate, authorize('admin'), updateUserValidator, valida
 router.delete('/:id', authenticate, authorize('admin'), ctrl.deleteUser);
 router.patch('/:id/status', authenticate, authorize('admin'), ctrl.updateUserStatus);
 
-// Public route (no authentication/authorization)
-router.post('/verify-payment-department-passcode', authenticate, authorize('handler'),  ctrl.verifyPaymentDepartmentPasscode);
-router.post('/printing/verify-payment-department-passcode', authenticate, authorize('printing-handler'),  ctrl.verifyPaymentDepartmentPasscode);
-router.post('/production/verify-payment-department-passcode', authenticate, authorize('user'),  ctrl.verifyPaymentDepartmentPasscode);
+// Role-specific verification routes
+// Payment Department Passcode
+router.post('/verify-payment-department-passcode', authenticate, authorize('dying-factory'), ctrl.verifyPaymentDepartmentPasscode);
+router.post('/printing/verify-payment-department-passcode', authenticate, authorize('printing-factory'), ctrl.verifyPaymentDepartmentPasscode);
+router.post('/production/verify-payment-department-passcode', authenticate, authorize('stitching-factory'), ctrl.verifyPaymentDepartmentPasscode);
 
 
+router.post('/production/verify-verification-passcode', authenticate, authorize('stitching-factory'), ctrl.verifyVerificationPasscode);
 
 module.exports = router;

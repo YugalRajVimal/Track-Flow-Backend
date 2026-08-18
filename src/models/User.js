@@ -28,6 +28,12 @@ const userSchema = new mongoose.Schema(
       match: [/^\d{5}$/, 'Passcode must be exactly 5 digits'],
       select: false,
     },
+    verificationPassscode: {
+      type: String,
+      required: false,
+      match: [/^\d{5}$/, 'VerificationPassscode must be exactly 5 digits'],
+      select: false,
+    },
     paymentDepartmentPasscode: {
       type: String,
       required: false,
@@ -36,7 +42,7 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['admin', 'user', 'handler', 'printing-handler'],
+      enum: ['admin', 'stitching-factory', 'dying-factory', 'printing-factory'],
       default: 'user',
     },
     isActive: {
@@ -51,19 +57,23 @@ const userSchema = new mongoose.Schema(
         delete ret.password;
         delete ret.passcode;
         delete ret.paymentDepartmentPasscode;
+        delete ret.verificationPassscode;
         return ret;
       },
     },
   }
 );
 
-// Hash password, passcode, and paymentDepartmentPasscode if modified
+// Hash password, passcode, paymentDepartmentPasscode, and verificationPassscode if modified
 userSchema.pre('save', async function (next) {
   if (this.isModified('password')) {
     this.password = await bcrypt.hash(this.password, 12);
   }
   if (this.isModified('passcode')) {
     this.passcode = await bcrypt.hash(this.passcode, 12);
+  }
+  if (this.isModified('verificationPassscode') && this.verificationPassscode) {
+    this.verificationPassscode = await bcrypt.hash(this.verificationPassscode, 12);
   }
   if (this.isModified('paymentDepartmentPasscode') && this.paymentDepartmentPasscode) {
     this.paymentDepartmentPasscode = await bcrypt.hash(this.paymentDepartmentPasscode, 12);
@@ -77,6 +87,11 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 
 userSchema.methods.comparePasscode = async function (candidatePasscode) {
   return bcrypt.compare(candidatePasscode, this.passcode);
+};
+
+userSchema.methods.compareVerificationPassscode = async function (candidateVerificationPassscode) {
+  if (!this.verificationPassscode) return false;
+  return bcrypt.compare(candidateVerificationPassscode, this.verificationPassscode);
 };
 
 userSchema.methods.comparePaymentDepartmentPasscode = async function (candidatePDPasscode) {
