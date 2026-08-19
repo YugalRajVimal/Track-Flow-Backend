@@ -34,6 +34,15 @@ const costManagementSchema = new mongoose.Schema(
 
     // Computed: cutting + stitching + sum(finishing) + sum(packingMaterial) + sum(other) + readyFabricRate
     finalCosting: { type: Number, required: false },
+
+    // Indicates whether this cost entry is verified/approved (passcode + sign gated)
+    verified: { type: Boolean, required: false, default: false },
+
+    // Name string for sign-off/approval (same signUser dropdown as Challan)
+    sign: { type: String, required: false, trim: true },
+
+    // Timestamp of when verification happened (set only on successful verify)
+    verifiedAt: { type: Date, required: false },
   },
   { timestamps: true }
 );

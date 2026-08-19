@@ -17,11 +17,11 @@ router.patch('/:id/status', authenticate, authorize('admin'), ctrl.updateUserSta
 
 // Role-specific verification routes
 // Payment Department Passcode
-router.post('/verify-payment-department-passcode', authenticate, authorize('dying-factory'), ctrl.verifyPaymentDepartmentPasscode);
-router.post('/printing/verify-payment-department-passcode', authenticate, authorize('printing-factory'), ctrl.verifyPaymentDepartmentPasscode);
-router.post('/production/verify-payment-department-passcode', authenticate, authorize('stitching-factory'), ctrl.verifyPaymentDepartmentPasscode);
+router.post('/verify-payment-department-passcode', authenticate, authorize('dying-factory', 'admin'), ctrl.verifyPaymentDepartmentPasscode);
+router.post('/printing/verify-payment-department-passcode', authenticate, authorize('printing-factory', 'admin'), ctrl.verifyPaymentDepartmentPasscode);
+router.post('/production/verify-payment-department-passcode', authenticate, authorize('stitching-factory', 'admin'), ctrl.verifyPaymentDepartmentPasscode);
+router.post('/production/verify-verification-passcode', authenticate, authorize('stitching-factory', 'admin'), ctrl.verifyVerificationPasscode);
+router.post('/production/verify-cost-management-passcode', authenticate, authorize('stitching-factory', 'admin'), ctrl.verifyCostManagementPasscode);
 
-
-router.post('/production/verify-verification-passcode', authenticate, authorize('stitching-factory'), ctrl.verifyVerificationPasscode);
 
 module.exports = router;

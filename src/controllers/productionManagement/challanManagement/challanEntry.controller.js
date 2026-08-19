@@ -1,81 +1,4 @@
-// const challanEntryService = require('../../../services/productionManagement/challanManagement/challanEntry.service');
 
-// /**
-//  * Controller to fetch (or build) a challan entry for a given station and date.
-//  */
-// async function fetchChallanEntryController(req, res) {
-//   try {
-//     const { station, date } = req.params;
-//     const result = await challanEntryService.fetchOrBuildEntry(station, date);
-//     res.json({ success: true, data: result.entry, isNew: result.isNew });
-//   } catch (error) {
-//     res.status(400).json({ success: false, message: error.message });
-//   }
-// }
-
-// /**
-//  * Controller to save a challan entry for a given station and date.
-//  */
-// async function saveChallanEntryController(req, res) {
-//   try {
-//     const { station, date } = req.params;
-//     const { platforms, totalReturns, userId } = req.body;
-//     // sign is no longer accepted here (it's handled in verification)
-//     const saved = await challanEntryService.saveEntry(station, date, { platforms, totalReturns, userId });
-//     res.json({ success: true, data: saved });
-//   } catch (error) {
-//     res.status(400).json({ success: false, message: error.message });
-//   }
-// }
-
-// /**
-//  * Controller to verify dispatch or return challan entry.
-//  * POST /challan-entry/:station/:date/verify
-//  */
-// async function verifyChallanEntryController(req, res) {
-//   try {
-//     const { station, date } = req.params;
-//     const {
-//       verificationPasscode,
-
-//       channel,
-//       brand,
-//       courier,
-//       remark,
-//       missingOrderOrReturnCount,
-//       sign
-//     } = req.body;
-
-
-
-//     // The user from auth (e.g., req.user) can be used, or allow overriding via body.user
-//     const user =  req.user.id;
-
-
-//     const verifiedEntry = await challanEntryService.verifyDispatchOrReturnEntry({
-//       station,
-//       dateStr: date,
-//       user: user,
-//       verificationPasscode,
-//       channel,
-//       brand,
-//       courier,
-//       remark,
-//       missingOrderOrReturnCount,
-//       sign
-//     });
-
-//     res.json({ success: true, data: verifiedEntry });
-//   } catch (error) {
-//     res.status(400).json({ success: false, message: error.message });
-//   }
-// }
-
-// module.exports = {
-//   fetchChallanEntryController,
-//   saveChallanEntryController,
-//   verifyChallanEntryController
-// };
 
 const challanEntryService = require('../../../services/productionManagement/challanManagement/challanEntry.service');
  
@@ -104,8 +27,8 @@ async function fetchChallanEntryController(req, res) {
 async function saveChallanEntryController(req, res) {
   try {
     const { station, date } = req.params;
-    let { platforms, totalReturns, remark, userId } = req.body;
- 
+    let { platforms, totalReturns, remark, userId, challanSign } = req.body;
+
     if (typeof platforms === 'string') {
       try {
         platforms = JSON.parse(platforms);
@@ -113,20 +36,21 @@ async function saveChallanEntryController(req, res) {
         return res.status(400).json({ success: false, message: 'Invalid platforms payload.' });
       }
     }
- 
+
     // Uploaded challan photo (Label Station only) — set by the uploadImage
     // multer middleware as req.file when a file was attached.
     let challanPhotoUrl;
     if (req.file) {
       challanPhotoUrl = `/uploads/${req.file.filename}`;
     }
- 
+
     const saved = await challanEntryService.saveEntry(station, date, {
       platforms,
       totalReturns,
       remark,
       challanPhotoUrl,
       userId,
+      challanSign,
     });
     res.json({ success: true, data: saved });
   } catch (error) {

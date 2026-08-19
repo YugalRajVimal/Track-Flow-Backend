@@ -40,6 +40,13 @@ const userSchema = new mongoose.Schema(
       match: [/^[a-zA-Z0-9]{5,16}$/, 'paymentDepartmentPasscode must be 5-16 alphanumeric characters'],
       select: false,
     },
+    // Add costManagementPasscode field as a 5 digit number (like passcode)
+    costManagementPasscode: {
+      type: String,
+      required: false,
+      match: [/^\d{5}$/, 'Cost Management Passcode must be exactly 5 digits'],
+      select: false,
+    },
     role: {
       type: String,
       enum: ['admin', 'stitching-factory', 'dying-factory', 'printing-factory'],
@@ -58,13 +65,14 @@ const userSchema = new mongoose.Schema(
         delete ret.passcode;
         delete ret.paymentDepartmentPasscode;
         delete ret.verificationPassscode;
+        delete ret.costManagementPasscode;
         return ret;
       },
     },
   }
 );
 
-// Hash password, passcode, paymentDepartmentPasscode, and verificationPassscode if modified
+// Hash password, passcode, paymentDepartmentPasscode, verificationPassscode, and costManagementPasscode if modified
 userSchema.pre('save', async function (next) {
   if (this.isModified('password')) {
     this.password = await bcrypt.hash(this.password, 12);
@@ -77,6 +85,9 @@ userSchema.pre('save', async function (next) {
   }
   if (this.isModified('paymentDepartmentPasscode') && this.paymentDepartmentPasscode) {
     this.paymentDepartmentPasscode = await bcrypt.hash(this.paymentDepartmentPasscode, 12);
+  }
+  if (this.isModified('costManagementPasscode') && this.costManagementPasscode) {
+    this.costManagementPasscode = await bcrypt.hash(this.costManagementPasscode, 12);
   }
   next();
 });
@@ -97,6 +108,12 @@ userSchema.methods.compareVerificationPassscode = async function (candidateVerif
 userSchema.methods.comparePaymentDepartmentPasscode = async function (candidatePDPasscode) {
   if (!this.paymentDepartmentPasscode) return false;
   return bcrypt.compare(candidatePDPasscode, this.paymentDepartmentPasscode);
+};
+
+// Method to compare costManagementPasscode
+userSchema.methods.compareCostManagementPasscode = async function (candidateCostManagementPasscode) {
+  if (!this.costManagementPasscode) return false;
+  return bcrypt.compare(candidateCostManagementPasscode, this.costManagementPasscode);
 };
 
 module.exports = mongoose.model('User', userSchema);

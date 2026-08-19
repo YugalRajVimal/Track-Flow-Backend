@@ -60,6 +60,33 @@ async function previewStyleAverageController(req, res) {
   }
 }
 
+/** Standalone passcode check — mirrors the Challan verify-passcode endpoint. */
+async function verifyCostManagementPasscode(req, res) {
+  try {
+    const { passcode } = req.body;
+    const isValid = await costManagementService.verifyCostManagementPasscode(passcode);
+    if (!isValid) {
+      return res.status(400).json({ success: false, message: 'Invalid passcode.' });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+/** Full verify: passcode + sign (+ optional remark) -> marks record verified & locked. */
+async function verifyCostManagementController(req, res) {
+  try {
+    const updated = await costManagementService.verifyCostManagement(
+      req.params.recordId,
+      { ...req.body, user: req.user }
+    );
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+}
+
 module.exports = {
   createCostManagementController,
   editCostManagementController,
@@ -67,4 +94,6 @@ module.exports = {
   fetchCostManagementByIdController,
   deleteCostManagementController,
   previewStyleAverageController,
+  verifyCostManagementPasscode,
+  verifyCostManagementController,
 };

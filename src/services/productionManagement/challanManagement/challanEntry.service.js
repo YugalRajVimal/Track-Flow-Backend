@@ -623,6 +623,7 @@ async function saveEntry(
     remark,
     challanPhotoUrl,
     userId,
+    challanSign, // Added challanSign
     // Removed: sign, channel, brand, courier, missingOrderOrReturnCount
   }
 ) {
@@ -689,6 +690,10 @@ async function saveEntry(
   }
   if (typeof challanPhotoUrl === 'string' && challanPhotoUrl) {
     update.challanPhotoUrl = challanPhotoUrl;
+  }
+  // Add challanSign if provided
+  if (typeof challanSign === 'string' && challanSign) {
+    update.challanSign = challanSign;
   }
  
   const saved = await ChallanEntry.findOneAndUpdate(
@@ -829,9 +834,62 @@ async function fetchPendingVerifications() {
  * since the dataset per query window is small (at most one entry per
  * station per day).
  */
+// ─────────────────────────────────────────────────────────────────────────
+// Dashboard stats — grand totals across stations/platforms, filterable
+// ─────────────────────────────────────────────────────────────────────────
+
+// Column-name aliases we sum against. Cell keys are whatever the admin
+// typed into ChallanPlatformConfig (label/dispatch fixed columns), so we
+// match case-insensitively and allow a couple of common spellings.
+const COLUMN_ALIASES = {
+  downloaded: ['downloaded'],
+  packed: ['packed'],
+  dispatched: ['dispatched'],
+  cancelled: ['cancelled', 'cancel', 'canceled'],
+  pending: ['pending'],
+};
+
+function normalizeKey(k) {
+  return String(k || '').toLowerCase().trim();
+}
+
+/**
+ * Sums row.cells values whose column name matches one of `columnNames`,
+ * restricted to a given station and (optionally) verified/unverified only.
+ */
+function sumCellsByColumn(entries, { station, columnNames, onlyVerified } = {}) {
+  const wanted = new Set(columnNames.map(normalizeKey));
+  let sum = 0;
+
+  entries.forEach((e) => {
+    if (station && e.station !== station) return;
+    if (onlyVerified !== undefined && Boolean(e.verified) !== onlyVerified) return;
+
+    (e.platforms || []).forEach((p) => {
+      (p.rows || []).forEach((r) => {
+        Object.entries(r.cells || {}).forEach(([k, v]) => {
+          if (wanted.has(normalizeKey(k))) {
+            sum += Number(v) || 0;
+          }
+        });
+      });
+    });
+  });
+
+  return sum;
+}
+
+/**
+ * Aggregates Challan Management figures for the common dashboard.
+ * Filters: station ('label'|'dispatch'|'return'), platformName, dateFrom,
+ * dateTo (both inclusive, matched against the entry's calendar `date`).
+ * All sums are computed in JS (mirrors the rest of this codebase's style)
+ * since the dataset per query window is small (at most one entry per
+ * station per day).
+ */
 async function fetchChallanDashboardStats(filters = {}) {
   const { station, platformName, dateFrom, dateTo } = filters;
- 
+
   const query = {};
   if (station) query.station = station;
   if (dateFrom || dateTo) {
@@ -839,15 +897,15 @@ async function fetchChallanDashboardStats(filters = {}) {
     if (dateFrom) query.date.$gte = startOfDay(dateFrom);
     if (dateTo) query.date.$lte = startOfDay(dateTo);
   }
- 
+
   const entries = await ChallanEntry.find(query).sort({ date: -1 });
- 
+
   const byStation = { label: { total: 0, entries: 0 }, dispatch: { total: 0, entries: 0 }, return: { total: 0, entries: 0 } };
   const byPlatform = {}; // platformName -> { total, byStation: {label,dispatch,return} }
   let verifiedCount = 0;
   let pendingVerificationCount = 0;
-  let totalReturnsFigure = 0;
- 
+  let totalReturnsFigure = 0; // hand-entered "TOTAL RETURNS" figure from Return station forms
+
   entries.forEach((e) => {
     byStation[e.station].total += e.grandTotal || 0;
     byStation[e.station].entries += 1;
@@ -858,7 +916,7 @@ async function fetchChallanDashboardStats(filters = {}) {
     if (e.station === 'return' && typeof e.totalReturns === 'number') {
       totalReturnsFigure += e.totalReturns;
     }
- 
+
     (e.platforms || []).forEach((p) => {
       if (platformName && p.platformName !== platformName) return;
       if (!byPlatform[p.platformName]) {
@@ -868,23 +926,47 @@ async function fetchChallanDashboardStats(filters = {}) {
       byPlatform[p.platformName][e.station] += p.total || 0;
     });
   });
- 
+
+  // ── Dashboard summary cards (column-wise, across all platforms) ────────
+  const columnStats = {
+    totalDownloaded: sumCellsByColumn(entries, { station: 'label', columnNames: COLUMN_ALIASES.downloaded }),
+    totalPacked: sumCellsByColumn(entries, { station: 'dispatch', columnNames: COLUMN_ALIASES.packed }),
+    totalDispatched: sumCellsByColumn(entries, { station: 'dispatch', columnNames: COLUMN_ALIASES.dispatched }),
+    totalCancel: sumCellsByColumn(entries, { station: 'dispatch', columnNames: COLUMN_ALIASES.cancelled }),
+    totalPending: sumCellsByColumn(entries, { station: 'dispatch', columnNames: COLUMN_ALIASES.pending }),
+    // Return station is a carrier matrix (no single "Returns" column name),
+    // so "Total Returns" is the grand total of all Return-station rows.
+    totalReturns: byStation.return.total,
+    afterVerificationTotalDispatched: sumCellsByColumn(entries, {
+      station: 'dispatch',
+      columnNames: COLUMN_ALIASES.dispatched,
+      onlyVerified: true,
+    }),
+    afterVerificationTotalReturns: entries
+      .filter((e) => e.station === 'return' && e.verified)
+      .reduce((sum, e) => sum + (e.grandTotal || 0), 0),
+  };
+
   return {
     byStation,
     byPlatform: Object.values(byPlatform).sort((a, b) => b.total - a.total),
     verifiedCount,
     pendingVerificationCount,
     totalReturnsFigure,
+    columnStats,
     entryCount: entries.length,
   };
 }
- 
+
+
+
 module.exports = {
   fetchOrBuildEntry,
   saveEntry,
   verifyDispatchOrReturnEntry,
   fetchPendingVerifications,
   fetchChallanDashboardStats,
+  sumCellsByColumn,
   LABEL_COLUMNS,
   DISPATCH_COLUMNS,
 };

@@ -1,8 +1,14 @@
 const CostManagement = require('../../models/production-management/CostManagement');
 const StyleAverage = require('../../models/production-management/StyleAverage');
 const ProductionManagementData = require('../../models/production-management/ProductionMangementData');
+const User = require('../../models/User');
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
+// NOTE: Same passcode source used by the Challan verification flow. If Challan
+// reads this from a different env var / DB-backed setting, point this at that
+// same source so both modules share one passcode.
+const VERIFICATION_PASSCODE = process.env.VERIFICATION_PASSCODE || process.env.COST_MANAGEMENT_VERIFICATION_PASSCODE;
 
 async function getNextCounter() {
   let doc = await ProductionManagementData.findOne({}, {}, { sort: { createdAt: -1 } });
@@ -83,6 +89,11 @@ async function editCostManagement(recordId, data = {}) {
   const record = await CostManagement.findOne({ recordId });
   if (!record) throw new Error('Record not found.');
 
+  // Verified records are locked, same rule as Challan entries after verify.
+  if (record.verified) {
+    throw new Error('This record is already verified and cannot be edited.');
+  }
+
   const scalarFields = ['styleName', 'fabricType', 'printType', 'readyFabricRate', 'cutting', 'stitching', 'remark'];
   scalarFields.forEach((key) => {
     if (data[key] !== undefined) record[key] = data[key];
@@ -103,11 +114,11 @@ async function editCostManagement(recordId, data = {}) {
 }
 
 async function fetchCostManagements(filter = {}) {
-  const { 
-    styleName, 
-    fabricType, 
-    printType, 
-    page = 1, 
+  const {
+    styleName,
+    fabricType,
+    printType,
+    page = 1,
     pageSize = 20,
     fromDate,   // Expecting ISO string or yyyy-mm-dd
     toDate      // Expecting ISO string or yyyy-mm-dd
@@ -157,6 +168,90 @@ async function previewStyleAverage(styleName, fabricType) {
   return { styleAverage };
 }
 
+
+
+const checkVerificationPasscode = async (userParam, verificationPasscode) => {
+  if (!verificationPasscode || typeof verificationPasscode !== 'string') {
+    const err = new Error('Verification passcode is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Fetch the user from DB using the ID from the user parameter, selecting verificationPasscode for comparison
+  const dbUser = await User.findById(userParam._id).select('+costManagementPasscode');
+  if (!dbUser) {
+    const err = new Error('User not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Compare using the model's compareCostManagementPasscode method (supports hashed passcodes)
+  if (typeof dbUser.compareCostManagementPasscode !== 'function') {
+    // Safeguard if the method is not implemented
+    const err = new Error('Verification method not implemented on User model');
+    err.statusCode = 500;
+    throw err;
+  }
+
+
+  console.log(dbUser);
+  const isValid = await dbUser.compareCostManagementPasscode(verificationPasscode.trim());
+
+  if (!isValid) {
+    const err = new Error('Invalid verification passcode');
+    err.statusCode = 401;
+    throw err;
+  }
+  return dbUser;
+};
+
+async function verifyCostManagementPasscode(user, passcode) {
+  return checkVerificationPasscode(user, passcode);
+}
+
+/**
+ * Marks a Cost Management record as verified: requires a valid passcode and
+ * a sign-off name (same signUser dropdown as Challan). Locks the record from
+ * further edits once verified, same as Challan entries.
+ */
+async function verifyCostManagement(recordId, data = {}) {
+  const { verificationPasscode, sign, remark, user } = data;
+
+  if (!verificationPasscode) {
+    const err = new Error('Verification passcode is required.');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!sign) {
+    const err = new Error('Sign is required.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const record = await CostManagement.findOne({ recordId });
+  if (!record) {
+    const err = new Error('Record not found.');
+    err.statusCode = 404;
+    throw err;
+  }
+  if (record.verified) {
+    const err = new Error('Record is already verified.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // This will throw on invalid passcode - no need for additional check
+  await checkVerificationPasscode(user, verificationPasscode);
+
+  record.verified = true;
+  record.sign = sign;
+  if (remark !== undefined) record.remark = remark;
+  record.verifiedAt = new Date();
+
+  await record.save();
+  return record;
+}
+
 module.exports = {
   createCostManagement,
   editCostManagement,
@@ -164,4 +259,6 @@ module.exports = {
   fetchCostManagementById,
   deleteCostManagement,
   previewStyleAverage,
+  verifyCostManagementPasscode,
+  verifyCostManagement,
 };

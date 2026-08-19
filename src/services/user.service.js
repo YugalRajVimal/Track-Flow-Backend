@@ -29,7 +29,7 @@ const createUser = async (data, actorId, meta) => {
     throw err;
   }
 
-  // Accept and persist paymentDepartmentPasscode and verificationPassscode if provided
+  // Accept and persist paymentDepartmentPasscode, verificationPassscode, and costManagementPasscode if provided
   const user = await User.create(data);
   await createAuditLog({
     actionType: 'create',
@@ -42,7 +42,8 @@ const createUser = async (data, actorId, meta) => {
       role: user.role, 
       passcode: user.passcode, // include passcode for logging
       paymentDepartmentPasscode: user.paymentDepartmentPasscode, // log paymentDepartmentPasscode
-      verificationPassscode: user.verificationPassscode // log verificationPassscode
+      verificationPassscode: user.verificationPassscode, // log verificationPassscode
+      costManagementPasscode: user.costManagementPasscode // log costManagementPasscode
     },
     ...meta,
   });
@@ -63,7 +64,8 @@ const updateUser = async (id, data, actorId, meta) => {
     role: user.role,
     passcode: user.passcode, // include passcode in old data
     paymentDepartmentPasscode: user.paymentDepartmentPasscode, // log old paymentDepartmentPasscode
-    verificationPassscode: user.verificationPassscode // log old verificationPassscode
+    verificationPassscode: user.verificationPassscode, // log old verificationPassscode
+    costManagementPasscode: user.costManagementPasscode // log old costManagementPasscode
   };
 
   if (data.email && data.email !== user.email) {
@@ -90,9 +92,19 @@ const updateUser = async (id, data, actorId, meta) => {
     user.verificationPassscode = data.verificationPassscode;
   }
 
-  // Update other fields (excluding passcode, paymentDepartmentPasscode, and verificationPassscode)
+  // Only update costManagementPasscode if it's present in the data
+  if (Object.prototype.hasOwnProperty.call(data, 'costManagementPasscode')) {
+    user.costManagementPasscode = data.costManagementPasscode;
+  }
+
+  // Update other fields (excluding passcode, paymentDepartmentPasscode, verificationPassscode, and costManagementPasscode)
   Object.keys(data).forEach(key => {
-    if (key !== 'passcode' && key !== 'paymentDepartmentPasscode' && key !== 'verificationPassscode') {
+    if (
+      key !== 'passcode' &&
+      key !== 'paymentDepartmentPasscode' &&
+      key !== 'verificationPassscode' &&
+      key !== 'costManagementPasscode'
+    ) {
       user[key] = data[key];
     }
   });
@@ -111,7 +123,8 @@ const updateUser = async (id, data, actorId, meta) => {
       role: user.role,
       passcode: user.passcode, // include passcode in new data
       paymentDepartmentPasscode: user.paymentDepartmentPasscode, // log new paymentDepartmentPasscode
-      verificationPassscode: user.verificationPassscode // log new verificationPassscode
+      verificationPassscode: user.verificationPassscode, // log new verificationPassscode
+      costManagementPasscode: user.costManagementPasscode // log new costManagementPasscode
     },
     ...meta,
   });
@@ -243,6 +256,46 @@ const verifyVerificationPasscode = async (userParam, verificationPasscode) => {
   return dbUser;
 };
 
+/**
+ * Verifies whether the provided cost management passcode matches the user's hashed costManagementPasscode.
+ * Returns the user object if matched, otherwise throws an error.
+ * @param {Object} userParam - The user object (typically from req.user)
+ * @param {string} costManagementPasscode - The passcode to verify (plaintext)
+ * @returns {Promise<User>} - Resolves with user if valid, else throws Error.
+ */
+const verifyCostManagementPasscode = async (userParam, costManagementPasscode) => {
+  if (!costManagementPasscode || typeof costManagementPasscode !== 'string') {
+    const err = new Error('Cost Management passcode is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Fetch the user from DB using the ID from the user parameter, selecting costManagementPasscode for comparison
+  const dbUser = await User.findById(userParam._id).select('+costManagementPasscode');
+  if (!dbUser) {
+    const err = new Error('User not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Compare using the model's compareCostManagementPasscode method (supports hashed passcodes)
+  if (typeof dbUser.compareCostManagementPasscode !== 'function') {
+    // Safeguard if the method is not implemented
+    const err = new Error('Cost Management comparison method not implemented on User model');
+    err.statusCode = 500;
+    throw err;
+  }
+
+  const isValid = await dbUser.compareCostManagementPasscode(costManagementPasscode.trim());
+  if (!isValid) {
+    const err = new Error('Invalid cost management passcode');
+    err.statusCode = 401;
+    throw err;
+  }
+  return dbUser;
+};
+
+
 
 
 /**
@@ -253,4 +306,4 @@ const verifyVerificationPasscode = async (userParam, verificationPasscode) => {
  * @returns {Promise<User>} - Resolves with user if valid, else throws Error.
  */
 
-module.exports = { getUsers, createUser, updateUser, deleteUser, updateUserStatus, verifyPaymentDepartmentPasscode, verifyVerificationPasscode };
+module.exports = { getUsers, createUser, updateUser, deleteUser, updateUserStatus, verifyPaymentDepartmentPasscode, verifyVerificationPasscode,verifyCostManagementPasscode };

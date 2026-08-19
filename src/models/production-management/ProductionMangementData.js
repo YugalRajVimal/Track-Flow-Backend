@@ -66,6 +66,11 @@ const productionManagementDataSchema = new mongoose.Schema(
     ],
     finishing: [
       { type: String, trim: true, required: true }
+    ],
+
+    // ── Added for Cost Management/Verification sign dropdown ──────────────
+    signUser: [
+      { type: String, trim: true, required: true }
     ]
   },
   { timestamps: true }
