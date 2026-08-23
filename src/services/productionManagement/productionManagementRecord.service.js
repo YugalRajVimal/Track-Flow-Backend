@@ -620,7 +620,7 @@ async function verifyUserPasscode(userId, passcode) {
   if (!userId) throw new Error('userId is required for this action.');
   if (!passcode) throw new Error('passcode is required for this action.');
  
-  const user = await User.findById(userId).select('+passcode');
+  const user = await User.findById(userId).select('+verificationPassscode');
   if (!user) throw new Error('User not found.');
   if (!user.isActive) throw new Error('User account is not active.');
  
